@@ -1,0 +1,13 @@
+{
+	"authUser": "e621 username",
+	"authKey": "e621 token",
+	"tokens": [
+		"discord bot token"
+	],
+	"guild": "guild id",
+	"channel": "channel id",
+	"webhook": {
+		"id": "webhook id",
+		"token": "webhook token"
+	}
+}
