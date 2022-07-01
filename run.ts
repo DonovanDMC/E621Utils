@@ -87,7 +87,10 @@ async function sendDiscord(embeds: Array<EmbedOptions>): Promise<void> {
 	});
 }
 
+let running = false;
 async function run() {
+	if (running) return;
+	running = true;
 	const found: Array<[post: Post, tagIndex: number]> = [];
 	const allPosts: Array<number> = [];
 	const prev = Object.keys(cache).map(Number);
@@ -198,6 +201,7 @@ async function run() {
 	}
 
 	await editChannel();
+	running = false;
 }
 
 setInterval(() => {
