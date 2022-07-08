@@ -18,11 +18,7 @@ const e621 = new E621({
 const exists = (path: PathLike) => access(path).then(() => true, () => false);
 const dir = isDocker ? "/mnt/data" : new URL("data/", import.meta.url).pathname;
 if (!await exists(dir)) await mkdir(dir);
-const users: Record<string, number> = {}, cache: Record<string, { tags: Array<string>; updaters: Array<[name: string, id: number]>; rating: string; }> = {};
-if (await exists(`${dir}/users.json`)) {
-	const u = JSON.parse((await readFile(`${dir}/users.json`)).toString()) as typeof users;
-	Object.entries(u).forEach(([k, v]) => users[k] = v);
-}
+const cache: Record<string, { tags: Array<string>; rating: string; }> = {};
 if (await exists(`${dir}/cache.json`)) {
 	const c = JSON.parse((await readFile(`${dir}/cache.json`)).toString()) as typeof cache;
 	Object.entries(c) .forEach(([k, v]) => cache[k] = v);
@@ -96,7 +92,7 @@ async function run() {
 	const prev = Object.keys(cache).map(Number);
 	const stillPresent: Array<number> = [];
 	const addedPosts: Array<number> = [];
-	const groupedByPost: Record<number, { post: Post; tags: Array<string>; histories: Array<PostHistory>; }> = {};
+	const groupedByPost: Record<number, { post: Post; tags: Array<string>; }> = {};
 	let removed = 0, added = 0;
 	for (const tag of tags) {
 		console.debug("Checking \"%s\"...", tag);
@@ -130,24 +126,18 @@ async function run() {
 					tags: [
 						...(groupedByPost[post.id]?.tags ?? []),
 						tag
-					],
-					histories: [
-						...(groupedByPost[post.id]?.histories ?? []),
-						...h
 					]
 				};
 				found.push([post, tagIndex]);
 				cache[post.id] = {
-					tags:     [...(cache[post.id]?.tags || []), tag],
-					updaters: h.filter(e => e.updater_id).map(e => [e.updater_name, e.updater_id!]),
-					rating:   post.rating
+					tags:   [...(cache[post.id]?.tags || []), tag],
+					rating: post.rating
 				};
-				if (h.length) h.forEach(e => e.updater_id && (users[e.updater_id] = (users[e.updater_id] ?? 0) + 1));
 			}
 		}
 	}
 
-	for (const [id, { tags: tagSet, updaters,rating }] of Object.entries(cache)) {
+	for (const [id, { tags: tagSet, rating }] of Object.entries(cache)) {
 		if (!stillPresent.includes(Number(id)) && !addedPosts.includes(Number(id))) {
 			const post = await e621.posts.get(id);
 			assert(post);
@@ -156,7 +146,7 @@ async function run() {
 			await sendDiscord([
 				{
 					title:       `Post Removed: #${id}`,
-					description: `Rating: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}** (Old: **${rating === "s" ? "Safe" : rating === "q" ? "Questionable" : "Explicit"}**)\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}\n\nBlame:\n${updaters.length === 0 ? "- Unknown" : updaters.map(([name, user]) => `- [${name}](https://e621.net/users/${user}) (seen ${users[user]} time${users[user] === 1 ? "" : "s"})`).join("\n")}`,
+					description: `Rating: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}** (Old: **${rating === "s" ? "Safe" : rating === "q" ? "Questionable" : "Explicit"}**)\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}`,
 					timestamp:   new Date().toISOString(),
 					url:         `https://e621.net/posts/${id}`,
 					color:       0xDC143C,
@@ -169,13 +159,12 @@ async function run() {
 	}
 
 	await writeFile(`${dir}/cache.json`, JSON.stringify(cache));
-	await writeFile(`${dir}/users.json`, JSON.stringify(users));
 
-	for (const [id, { post, tags: tagSet, histories }] of Object.entries(groupedByPost)) {
+	for (const [id, { post, tags: tagSet }] of Object.entries(groupedByPost)) {
 		await sendDiscord([
 			{
 				title:       `Post Added: #${id}`,
-				description: `Rating: **${post.rating}**\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}\n\nBlame:\n${histories.length === 0 ? "- Unknown" : histories.map(h => `- [${h.updater_name}](https://e621.net/users/${h.updater_id!}) (seen ${users[h.updater_id!]} time${users[h.updater_id!] === 1 ? "" : "s"})`).join("\n")}`,
+				description: `Rating: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}** (Old: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}**\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}}`,
 				timestamp:   new Date().toISOString(),
 				url:         `https://e621.net/posts/${id}`,
 				color:       0x008000,
