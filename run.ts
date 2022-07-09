@@ -164,7 +164,7 @@ async function run() {
 		await sendDiscord([
 			{
 				title:       `Post Added: #${id}`,
-				description: `Rating: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}** (Old: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}**\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}}`,
+				description: `Rating: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}**\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}`,
 				timestamp:   new Date().toISOString(),
 				url:         `https://e621.net/posts/${id}`,
 				color:       0x008000,
