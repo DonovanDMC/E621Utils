@@ -108,8 +108,10 @@ async function run() {
 					console.debug("Skipping post %d.", post.id);
 					continue;
 				} else {
-					addedPosts.push(post.id);
-					added++;
+					if (!addedPosts.includes(post.id)) {
+						addedPosts.push(post.id);
+						added++;
+					}
 				}
 				if (!allPosts.includes(post.id)) allPosts.push(post.id);
 				const tagIndex = tags.indexOf(tag);
