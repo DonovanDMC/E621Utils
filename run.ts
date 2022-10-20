@@ -5,7 +5,6 @@ import E621 from "e621";
 import type { EmbedOptions } from "eris";
 import { Client, CommandInteraction, Constants } from "eris";
 import chunk from "chunk";
-import { assert } from "tsafe";
 import { access, mkdir, readFile, writeFile } from "fs/promises";
 import type { PathLike } from "fs";
 
@@ -142,21 +141,29 @@ async function run() {
 	for (const [id, { tags: tagSet, rating }] of Object.entries(cache)) {
 		if (!stillPresent.includes(Number(id)) && !addedPosts.includes(Number(id))) {
 			const post = await e621.posts.get(id);
-			assert(post);
 			removed++;
 			delete cache[id];
-			await sendDiscord([
-				{
-					title:       `Post Removed: #${id}`,
-					description: `Rating: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}** (Old: **${rating === "s" ? "Safe" : rating === "q" ? "Questionable" : "Explicit"}**)\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}`,
-					timestamp:   new Date().toISOString(),
-					url:         `https://e621.net/posts/${id}`,
-					color:       0xDC143C,
-					image:       ["webm", "swf"].includes(post.file.ext) ? undefined : {
-						url: post.file.url
+			if (post === null) {
+				await sendDiscord([
+					{
+						title:     `Post Deleted: #${id}`,
+						timestamp: new Date().toISOString()
 					}
-				}
-			]);
+				]);
+			} else {
+				await sendDiscord([
+					{
+						title:       `Post Removed: #${id}`,
+						description: `Rating: **${post.rating === "s" ? "Safe" : post.rating === "q" ? "Questionable" : "Explicit"}** (Old: **${rating === "s" ? "Safe" : rating === "q" ? "Questionable" : "Explicit"}**)\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}`,
+						timestamp:   new Date().toISOString(),
+						url:         `https://e621.net/posts/${id}`,
+						color:       0xDC143C,
+						image:       ["webm", "swf"].includes(post.file.ext) ? undefined : {
+							url: post.file.url
+						}
+					}
+				]);
+			}
 		}
 	}
 
