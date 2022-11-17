@@ -4,11 +4,11 @@
   "description": "A tag checker for e621.",
   "main": "index.js",
   "scripts": {
-    "up:d": "npm run imgen-config && sudo docker-compose up --build --force-recreate -d",
-    "up": "npm run imgen-config && sudo docker-compose up --build --force-recreate",
+    "up:d": "sudo docker-compose up --build --force-recreate -d",
+    "up": "sudo docker-compose up --build --force-recreate",
     "down": "sudo docker-compose down --volumes --remove-orphans --rmi all",
-    "up:dev": "npm run imgen-config && sudo docker-compose up",
-    "up:dev:build": "npm run imgen-config && sudo docker-compose up --build",
+    "up:dev": "sudo docker-compose up",
+    "up:dev:build": "sudo docker-compose up --build",
     "dev": "npm run down && npm run up:dev",
     "dev:build": "npm run down && npm run up:dev:build",
     "update": "npm run down && git pull && git submodule update --init --recursive --remote && npm run up:d"
