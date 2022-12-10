@@ -4,14 +4,13 @@
   "description": "A tag checker for e621.",
   "main": "index.js",
   "scripts": {
-    "up:d": "sudo docker-compose up --build --force-recreate -d",
-    "up": "sudo docker-compose up --build --force-recreate",
-    "down": "sudo docker-compose down --volumes --remove-orphans --rmi all",
-    "up:dev": "sudo docker-compose up",
-    "up:dev:build": "sudo docker-compose up --build",
+    "up:d": "sudo docker compose pull && sudo docker compose up -d",
+    "up": "sudo docker compose pull && sudo docker compose up",
+    "down": "sudo docker compose down",
+    "up:dev": "sudo docker compose up",
     "dev": "npm run down && npm run up:dev",
-    "dev:build": "npm run down && npm run up:dev:build",
-    "update": "npm run down && git pull && git submodule update --init --recursive --remote && npm run up:d"
+    "dev:build": "npm run down && npm run up",
+    "update": "git pull && git submodule update --init --recursive --remote && docker compose pull && npm run down&& npm run up:d"
   },
   "repository": {
     "type": "git",
