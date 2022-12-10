@@ -2,7 +2,7 @@ version: "3"
 
 services:
   e621-tags:
-    image: ghcr.io/donovandmc/e621-tags
+    image: ghcr.io/donovandmc/e621tags
     container_name: e621-tags
     volumes:
       - ./data:/mnt/data
@@ -13,7 +13,7 @@ services:
     networks:
       default:
         ipv4_address: 172.19.1.34
-        
+
 networks:
   default:
     name: e621-tags
