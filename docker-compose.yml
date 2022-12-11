@@ -6,6 +6,7 @@ services:
     container_name: e621-tags
     volumes:
       - ./data:/mnt/data
+      - ./config.json:/app/config.json
     environment:
       DOCKER: 1
     restart: always
