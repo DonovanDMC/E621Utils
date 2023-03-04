@@ -2,11 +2,33 @@ import config from "./config.json" assert { type: "json" };
 import tags from "./tags.json" assert { type: "json" };
 import type { Post, PostHistory } from "e621";
 import E621 from "e621";
-import type { EmbedOptions } from "eris";
-import { Client, CommandInteraction, Constants } from "eris";
 import chunk from "chunk";
+import { StatusServer } from "@uwu-codes/utils";
+import {
+    ApplicationCommandTypes,
+    Client,
+    CommandInteraction,
+    type EmbedOptions,
+    MessageFlags
+} from "oceanic.js";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import type { PathLike } from "node:fs";
+
+const statusServer = StatusServer(() => clients.every(c => c.ready));
+
+process
+    .once("SIGINT", () => {
+        statusServer.close();
+        clearInterval(interval);
+        for (const c of clients) {
+            c.disconnect(false);
+        }
+        process.kill(process.pid, "SIGINT");
+    })
+    .once("SIGTERM", () => {
+        statusServer.close();
+        process.kill(process.pid, "SIGTERM");
+    });
 
 const isDocker = process.env.DOCKER === "1";
 const e621 = new E621({
@@ -29,18 +51,25 @@ if (await exists(`${dir}/cache.json`)) {
 const clients: Array<Client> = [];
 let lastClientIndex = -1;
 for (const token of config.tokens) {
-    const client = new Client(`Bot ${token}`, {
-        intents:      0,
-        messageLimit: 0
+    const client = new Client({
+        auth:    `Bot ${token}`,
+        gateway: {
+            intents: 0
+        },
+        collectionLimits: {
+            auditLogEntries: 0,
+            members:         0,
+            messages:        0,
+            users:           0
+        }
     });
-    client.users.limit = 0;
     client.guilds.limit = 0;
     client.on("debug", info => console.debug("[Eris Debug | #%d]:", clients.indexOf(client) + 1, info));
     client.on("interactionCreate", interaction => {
         if (interaction instanceof CommandInteraction && interaction.data.name === "run-checks") {
             void run();
             return interaction.createMessage({
-                flags:   Constants.MessageFlags.EPHEMERAL,
+                flags:   MessageFlags.EPHEMERAL,
                 content: "Running."
             });
         }
@@ -50,8 +79,8 @@ for (const token of config.tokens) {
         if (clients.indexOf(client) !== 0) {
             return;
         }
-        void client.bulkEditGuildCommands(config.guild, [
-            { type: Constants.ApplicationCommandTypes.CHAT_INPUT, name: "run-checks", description: "Force run the checks now." }
+        void client.application.bulkEditGuildCommands(config.guild, [
+            { type: ApplicationCommandTypes.CHAT_INPUT, name: "run-checks", description: "Force run the checks now." }
         ]);
     });
     clients.push(client);
@@ -70,7 +99,7 @@ async function editChannel() {
     }
     const client = clients[lastClientIndex];
     const d = Math.floor(Date.now() / 1000);
-    await client.editChannel(config.channel, { topic: `Last Checked: <t:${d}:R>` })
+    await client.rest.channels.edit(config.channel, { topic: `Last Checked: <t:${d}:R>` })
         .then(() => ratelimited = 0)
         .catch(() => {
             ratelimited++;
@@ -85,7 +114,7 @@ async function sendDiscord(embeds: Array<EmbedOptions>): Promise<void> {
         return;
     }
 
-    await clients[0].executeWebhook(config.webhook.id, config.webhook.token, {
+    await clients[0].rest.webhooks.execute(config.webhook.id, config.webhook.token, {
         embeds
     });
 }
@@ -202,7 +231,7 @@ async function run() {
                 title:       "Checks Completed",
                 color:       0xFFD700,
                 timestamp:   new Date().toISOString(),
-                description: `There ${added === 1 ? "was" : "were"} **${added}** addition${added !== 1 ? "s" : ""} and **${removed}** removal${removed !== 1 ? "s" : ""} this time around.`,
+                description: `There ${added === 1 ? "was" : "were"} **${added}** addition${added === 1 ? "" : "s"} and **${removed}** removal${removed === 1 ? "" : "s"} this time around.`,
                 footer:      {
                     text: `Total Cached Posts: ${Object.keys(cache).length}`
                 }
@@ -214,7 +243,7 @@ async function run() {
     running = false;
 }
 
-setInterval(() => {
+const interval = setInterval(() => {
     const d = new Date();
     if ((d.getMinutes() % 5) === 0 && d.getSeconds() === 0) {
         void run();

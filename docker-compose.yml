@@ -10,6 +10,16 @@ services:
     environment:
       DOCKER: 1
     restart: always
+    healthcheck:
+      interval: 5s
+      timeout: 1s
+      test: wget -q --spider http://localhost:3621
+    deploy:
+        resources:
+          limits:
+            memory: 256M
+          reservations:
+            memory: 128M
     hostname: e621-tags.containers.local
     networks:
       default:
