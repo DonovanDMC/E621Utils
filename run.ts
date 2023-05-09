@@ -56,31 +56,60 @@ for (const token of config.tokens) {
         gateway: {
             intents: 0
         },
-        collectionLimits: {
-            auditLogEntries: 0,
-            members:         0,
-            messages:        0,
-            users:           0
+        disableCache: "no-warning"
+    });
+    client.on("debug", info => console.debug("[Oceanic Debug | #%d]:", clients.indexOf(client) + 1, info));
+    client.on("interactionCreate", async interaction => {
+        if (interaction instanceof CommandInteraction) {
+            switch (interaction.data.name) {
+                case "run-checks": {
+                    void run();
+                    return interaction.createMessage({
+                        flags:   MessageFlags.EPHEMERAL,
+                        content: "Running."
+                    });
+                }
+
+                case "dump-cache": {
+                    if (Object.keys(cache).length === 0) {
+                        return interaction.createMessage({
+                            flags:   MessageFlags.EPHEMERAL,
+                            content: "There are currently 0 cached posts."
+                        });
+                    }
+
+                    const embeds: Array<EmbedOptions> = [];
+                    for (const [k, v] of Object.entries(cache)) {
+                        const post = await e621.posts.get(Number(k));
+                        embeds.push(makeEmbed(k, v.rating, v.tags, post));
+                    }
+
+                    const eb = chunk(embeds, 10);
+                    const initial = eb.shift()!;
+                    await interaction.createMessage({
+                        flags:   MessageFlags.EPHEMERAL,
+                        content: `There are currently ${Object.keys(cache).length} cached posts.`,
+                        embeds:  initial
+                    });
+                    for (const e of eb.values()) {
+                        await interaction.createFollowup({
+                            embeds: e,
+                            flags:  MessageFlags.EPHEMERAL
+                        });
+                    }
+                }
+            }
         }
     });
-    client.guilds.limit = 0;
-    client.on("debug", info => console.debug("[Eris Debug | #%d]:", clients.indexOf(client) + 1, info));
-    client.on("interactionCreate", interaction => {
-        if (interaction instanceof CommandInteraction && interaction.data.name === "run-checks") {
-            void run();
-            return interaction.createMessage({
-                flags:   MessageFlags.EPHEMERAL,
-                content: "Running."
-            });
-        }
-    });
-    client.on("ready", () => {
-        console.debug("[Eris | #%d]: Ready as %s#%s", clients.indexOf(client) + 1, client.user.username, client.user.discriminator);
+    client.on("ready", async() => {
+        await client.restMode();
+        console.debug("[Oceanic | #%d]: Ready as %s#%s", clients.indexOf(client) + 1, client.user.username, client.user.discriminator);
         if (clients.indexOf(client) !== 0) {
             return;
         }
-        void client.application.bulkEditGuildCommands(config.guild, [
-            { type: ApplicationCommandTypes.CHAT_INPUT, name: "run-checks", description: "Force run the checks now." }
+        await client.application.bulkEditGuildCommands(config.guild, [
+            { type: ApplicationCommandTypes.CHAT_INPUT, name: "run-checks", description: "Force run the checks now." },
+            { type: ApplicationCommandTypes.CHAT_INPUT, name: "dump-cache", description: "List the currently cached posts." }
         ]);
     });
     clients.push(client);
@@ -117,6 +146,22 @@ async function sendDiscord(embeds: Array<EmbedOptions>): Promise<void> {
     await clients[0].rest.webhooks.execute(config.webhook.id, config.webhook.token, {
         embeds
     });
+}
+
+function makeEmbed(id: string, rating: string, tagSet: Array<string>, post: Post | null) {
+    return post === null ? {
+        title:     `Post Destroyed: #${id}`,
+        timestamp: new Date().toISOString()
+    } : {
+        title:       `Post Removed: #${id}`,
+        description: `Rating: **${post.rating === "s" ? "Safe" : (post.rating === "q" ? "Questionable" : "Explicit")}** (Old: **${rating === "s" ? "Safe" : (rating === "q" ? "Questionable" : "Explicit")}**)\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}`,
+        timestamp:   new Date().toISOString(),
+        url:         `https://e621.net/posts/${id}`,
+        color:       0xDC143C,
+        image:       ["webm", "swf"].includes(post.file.ext) ? undefined : {
+            url: post.file.url
+        }
+    };
 }
 
 let running = false;
@@ -188,23 +233,7 @@ async function run() {
             const post = await e621.posts.get(id);
             removed++;
             delete cache[id];
-            await (post === null ? sendDiscord([
-                {
-                    title:     `Post Deleted: #${id}`,
-                    timestamp: new Date().toISOString()
-                }
-            ]) : sendDiscord([
-                {
-                    title:       `Post Removed: #${id}`,
-                    description: `Rating: **${post.rating === "s" ? "Safe" : (post.rating === "q" ? "Questionable" : "Explicit")}** (Old: **${rating === "s" ? "Safe" : (rating === "q" ? "Questionable" : "Explicit")}**)\n\nFound For:\n${tagSet.map(tag => `- \`${tag}\``).join("\n")}`,
-                    timestamp:   new Date().toISOString(),
-                    url:         `https://e621.net/posts/${id}`,
-                    color:       0xDC143C,
-                    image:       ["webm", "swf"].includes(post.file.ext) ? undefined : {
-                        url: post.file.url
-                    }
-                }
-            ]));
+            await sendDiscord([makeEmbed(id, rating, tagSet, post)]);
         }
     }
 
