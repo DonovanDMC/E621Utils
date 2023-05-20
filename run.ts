@@ -61,7 +61,7 @@ for (const token of config.tokens) {
     client.on("debug", info => console.debug("[Oceanic Debug | #%d]:", clients.indexOf(client) + 1, info));
     client.on("interactionCreate", async interaction => {
         if (interaction instanceof CommandInteraction) {
-            await interaction.defer();
+            await interaction.defer(MessageFlags.EPHEMERAL);
             switch (interaction.data.name) {
                 case "run-checks": {
                     void run();
