@@ -61,10 +61,11 @@ for (const token of config.tokens) {
     client.on("debug", info => console.debug("[Oceanic Debug | #%d]:", clients.indexOf(client) + 1, info));
     client.on("interactionCreate", async interaction => {
         if (interaction instanceof CommandInteraction) {
+            await interaction.defer();
             switch (interaction.data.name) {
                 case "run-checks": {
                     void run();
-                    return interaction.createMessage({
+                    return interaction.createFollowup({
                         flags:   MessageFlags.EPHEMERAL,
                         content: "Running."
                     });
@@ -72,7 +73,7 @@ for (const token of config.tokens) {
 
                 case "dump-cache": {
                     if (Object.keys(cache).length === 0) {
-                        return interaction.createMessage({
+                        return interaction.createFollowup({
                             flags:   MessageFlags.EPHEMERAL,
                             content: "There are currently 0 cached posts."
                         });
@@ -86,7 +87,7 @@ for (const token of config.tokens) {
 
                     const eb = chunk(embeds, 10);
                     const initial = eb.shift()!;
-                    await interaction.createMessage({
+                    await interaction.createFollowup({
                         flags:   MessageFlags.EPHEMERAL,
                         content: `There are currently ${Object.keys(cache).length} cached posts.`,
                         embeds:  initial
