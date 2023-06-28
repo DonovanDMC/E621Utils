@@ -3,7 +3,7 @@ import tags from "./tags.json" assert { type: "json" };
 import type { Post, PostHistory } from "e621";
 import E621 from "e621";
 import chunk from "chunk";
-import { StatusServer } from "@uwu-codes/utils";
+import StatusServer from "@uwu-codes/status-server";
 import {
     ApplicationCommandTypes,
     Client,
