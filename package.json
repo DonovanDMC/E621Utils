@@ -5,6 +5,7 @@
   "buildDate": null,
   "main": "index.js",
   "scripts": {
+    "start": "node --no-warnings --no-deprecation --experimental-specifier-resolution=node --loader ts-node/esm /app/run.ts",
     "up:d": "sudo docker compose pull && sudo docker compose up -d",
     "up": "sudo docker compose pull && sudo docker compose up",
     "down": "sudo docker compose down",
