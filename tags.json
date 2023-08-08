@@ -1,26 +1,59 @@
 [
-  "balls_outline -rating:e",
-  "balls -rating:e",
-  "penis_outline -rating:e",
-  "penis -rating:e",
-  "sheath_outline -rating:e",
-  "sheath -rating:e",
-  "anus_outline -rating:e",
-  "anus -rating:e",
-  "perineum -rating:e",
-  "sex_toy -rating:e",
-  "bulge_frottage sex -rating:e",
-  "urine -rating:e",
-  "peeing -rating:e",
-  "cum -rating:e",
-  "bulge_frottage rating:s",
-  "ball_gag rating:s",
-  "set:don_explicit -rating:e",
-  "set:don_questionable -rating:q",
-  "set:don_safe -rating:s",
-  "set:biko_bullshit ~penis ~balls",
-  "set:f103ad1882a03087adcc65778c2301f7 bulge balls",
-  "set:b05bcc3e84b015377bac351e91ef7ef0 bulge penis",
-  "set:141ed853474d53c1ebd61699bd6d4e1a ~balls_in_panties ~balls_in_underwear",
-  "set:b8868389277fac361b7c6bbf04dfa14a ~penis_in_panties ~penis_in_underwear"
+  {
+    "base": "-rating:e",
+    "groups": [
+      "balls_outline",
+      "balls",
+      "penis_outline",
+      "penis",
+      "sheath_outline",
+      "sheath",
+      "anus_outline",
+      "anus",
+      "perineum",
+      "sex_toy",
+      "urine",
+      "peeing",
+      "cum"
+    ]
+  },
+  {
+    "base": "bulge_frottage sex -rating:e",
+    "groups": null
+  },
+  {
+    "base": "rating:s",
+    "groups": [
+      "bulge_frottage",
+      "ball_gag"
+    ]
+  },
+  {
+    "base": "set:don_explicit -rating:e",
+    "groups": null
+  },
+  {
+    "base": "set:don_questionable -rating:q",
+    "groups": null
+  },
+  {
+    "base": "set:don_safe -rating:s",
+    "groups": null
+  },
+  {
+    "base": "set:f103ad1882a03087adcc65778c2301f7 balls",
+    "groups": null
+  },
+  {
+    "base": "set:b05bcc3e84b015377bac351e91ef7ef0 penis",
+    "groups": null
+  },
+  {
+    "base": "set:141ed853474d53c1ebd61699bd6d4e1a ~balls_in_panties ~balls_in_underwear",
+    "groups": null
+  },
+  {
+    "base": "set:b8868389277fac361b7c6bbf04dfa14a ~penis_in_panties ~penis_in_underwear",
+    "groups": null
+  }
 ]

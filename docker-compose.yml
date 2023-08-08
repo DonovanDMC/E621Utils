@@ -1,33 +1,33 @@
 version: "3"
 
 services:
-  e621-tags:
-    image: ghcr.io/donovandmc/e621tags
-    container_name: e621-tags
+  e621-utils:
+    #image: ghcr.io/donovandmc/e621utils
+    build: .
+    container_name: e621-utils
     volumes:
       - ./data:/mnt/data
       - ./config.json:/app/config.json
-    environment:
-      DOCKER: 1
     restart: always
+    init: true
     healthcheck:
       interval: 5s
       timeout: 1s
       test: wget -q --spider http://localhost:3621
     deploy:
-        resources:
-          limits:
-            memory: 256M
-          reservations:
-            memory: 128M
-    hostname: e621-tags.containers.local
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    hostname: e621-utils.containers.local
     networks:
       default:
         ipv4_address: 172.19.1.34
 
 networks:
   default:
-    name: e621-tags
+    name: e621-utils
     driver: bridge
     ipam:
       driver: default

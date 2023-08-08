@@ -1,4 +1,4 @@
-import e621 from "./client";
+import { e621 } from "./clients";
 import { setTimeout } from "node:timers/promises";
 
 
@@ -34,5 +34,6 @@ async function removeBlobSources() {
     }
 }
 
-
-await removeBlobSources();
+export default async function run() {
+    await removeBlobSources();
+}

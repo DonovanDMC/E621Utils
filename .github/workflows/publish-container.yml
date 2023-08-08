@@ -16,5 +16,5 @@ jobs:
       - name: Build And Publish
         uses: macbre/push-to-ghcr@master
         with:
-          image_name: donovandmc/e621tags
+          image_name: donovandmc/e621utils
           github_token: ${{ secrets.GITHUB_TOKEN }}
