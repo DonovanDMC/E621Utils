@@ -2,8 +2,7 @@ version: "3"
 
 services:
   e621-utils:
-    #image: ghcr.io/donovandmc/e621utils
-    build: .
+    image: ghcr.io/donovandmc/e621utils
     container_name: e621-utils
     volumes:
       - ./data:/mnt/data
