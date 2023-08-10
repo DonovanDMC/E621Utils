@@ -1,7 +1,7 @@
 {
-  "name": "e621-tags",
+  "name": "e621-utils",
   "version": "1.0.0",
-  "description": "A tag checker for e621.",
+  "description": "Several utilities related to e621.",
   "buildDate": null,
   "main": "index.js",
   "scripts": {
@@ -12,18 +12,18 @@
     "up:dev": "sudo docker compose up",
     "dev": "npm run down && npm run up:dev",
     "dev:build": "npm run down && npm run up",
-    "update": "git pull && git submodule update --init --recursive --remote && docker compose pull && npm run down&& npm run up:d"
+    "update": "git pull && git submodule update --init --recursive --remote && docker compose pull && npm run down && npm run up:d"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DonovanDMC/E621Tags.git"
+    "url": "git+https://github.com/DonovanDMC/E621Utils.git"
   },
   "author": "Donovan Daniels <hewwo@yiff.rocks>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/DonovanDMC/E621Tags/issues"
+    "url": "https://github.com/DonovanDMC/E621Utils/issues"
   },
-  "homepage": "https://github.com/DonovanDMC/E621Tags#readme",
+  "homepage": "https://github.com/DonovanDMC/E621Utils#readme",
   "type": "module",
   "devDependencies": {
     "@swc/core": "^1.3.75",

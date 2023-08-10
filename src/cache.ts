@@ -27,7 +27,15 @@ export interface Cache {
 
 export async function readCache() {
     if (!await exists(`${dir}/cache.json`)) {
-        return {} as Cache;
+        return {
+            lastSeen: {
+                blip:      0,
+                comment:   7576246,
+                forumPost: 372982
+            },
+            message: null,
+            posts:   []
+        } satisfies Cache;
     }
 
     return JSON.parse(await readFile(`${dir}/cache.json`, "utf8")) as Cache;

@@ -47,7 +47,7 @@ discord.on("interactionCreate", async interaction => {
                 const initial = eb.shift()!;
                 await interaction.createFollowup({
                     flags:   MessageFlags.EPHEMERAL,
-                    content: `There are currently ${Object.keys(cache).length} cached posts.`,
+                    content: `There are currently ${cache.posts.length} cached posts.`,
                     embeds:  initial
                 });
                 for (const e of eb.values()) {
