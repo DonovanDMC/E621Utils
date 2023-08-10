@@ -64,9 +64,9 @@ async function getForumPosts() {
 
 async function send(input: Blip | Comment | ForumPost, avatar: Post | null, type: "blip" | "comment" | "forumPost", user: User) {
     const d = {
-        blip:      { title: "New Blip by", url: "https://e621.net/blips/" },
-        comment:   { title: "New Comment by", url: "https://e621.net/comments/" },
-        forumPost: { title: "New Forum Post by", url: "https://e621.net/forum_posts/" }
+        blip:      { title: "New Blip by ", url: "https://e621.net/blips/" },
+        comment:   { title: "New Comment by ", url: "https://e621.net/comments/" },
+        forumPost: { title: "New Forum Post by ", url: "https://e621.net/forum_posts/" }
     }[type];
     await discord.rest.channels.createMessage(config.mentionsChannel, {
         embeds: [
