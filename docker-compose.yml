@@ -21,8 +21,7 @@ services:
           memory: 128M
     hostname: e621-utils.containers.local
     networks:
-      default:
-        ipv4_address: 172.19.1.34
+      - default
 
 networks:
   default:
@@ -31,5 +30,4 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 172.19.1.32/30
-          gateway: 172.19.1.33
+        - subnet: 172.19.1.8/30
