@@ -7,20 +7,27 @@ export const e621 = new E621({
     authKey:  config.authKey
 });
 
-export const discord = new Client({
-    auth:    config.token,
-    gateway: {
-        intents: 0
-    },
-    disableCache: "no-warning"
-});
-discord.on("debug", info => console.debug("[Oceanic Debug]:", info));
-discord.on("ready", async() => {
-    await discord.restMode();
-    console.debug("[Oceanic]: Ready as %s#%s", discord.user.username, discord.user.discriminator);
-    await discord.application.bulkEditGuildCommands(config.guild, [
-        { type: ApplicationCommandTypes.CHAT_INPUT, name: "run-checks", description: "Force run the checks now." },
-        { type: ApplicationCommandTypes.CHAT_INPUT, name: "dump-cache", description: "List the currently cached posts." }
-    ]);
-});
-void discord.connect();
+
+let client: Client | undefined;
+export function discord() {
+    if (client === undefined) {
+        client = new Client({
+            auth:    config.token,
+            gateway: {
+                intents: 0
+            },
+            disableCache: "no-warning"
+        });
+        client.on("debug", info => console.debug("[Oceanic Debug]:", info));
+        client.on("ready", async() => {
+            await client!.restMode();
+            console.debug("[Oceanic]: Ready as %s#%s", client!.user.tag);
+            await client!.application.bulkEditGuildCommands(config.guild, [
+                { type: ApplicationCommandTypes.CHAT_INPUT, name: "run-checks", description: "Force run the checks now." },
+                { type: ApplicationCommandTypes.CHAT_INPUT, name: "dump-cache", description: "List the currently cached posts." }
+            ]);
+        });
+        void client.connect();
+    }
+    return client;
+}

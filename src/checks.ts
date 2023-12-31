@@ -15,7 +15,7 @@ import {
 import chunk from "chunk";
 import { type Post } from "e621";
 
-discord.on("interactionCreate", async interaction => {
+discord().on("interactionCreate", async interaction => {
     if (interaction instanceof ComponentInteraction) {
         await interaction.defer(MessageFlags.EPHEMERAL);
         const [command, ...args] = interaction.data.customID.split(":");
@@ -139,14 +139,14 @@ async function updateMessage(added: number, removed: number, recreate: boolean) 
     const oldCache = JSON.stringify(cache);
     const content = await getMessageContent(added, removed);
     if (cache.message !== null) {
-        await discord.rest.channels.editMessage(config.tagsChannel, cache.message, content)
+        await discord().rest.channels.editMessage(config.tagsChannel, cache.message, content)
             .catch(async () => (recreate = true));
     }
     if (recreate || cache.message === null) {
         if (cache.message !== null) {
-            await discord.rest.channels.deleteMessage(config.tagsChannel, cache.message);
+            await discord().rest.channels.deleteMessage(config.tagsChannel, cache.message);
         }
-        cache.message = (await discord.rest.channels.createMessage(config.tagsChannel, content)).id;
+        cache.message = (await discord().rest.channels.createMessage(config.tagsChannel, content)).id;
     }
     if (oldCache !== JSON.stringify(cache)) {
         await writeCache(cache);
@@ -206,7 +206,7 @@ function getComponents(cache: CacheEntry, post: Post, op: "add" | "remove" | nul
 
 async function sendDiscord(entry: CacheEntry, post: Post, op: "add" | "remove" | null) {
     const embed = makeEmbed(entry, post, op);
-    await discord.rest.channels.createMessage(config.tagsChannel, {
+    await discord().rest.channels.createMessage(config.tagsChannel, {
         embeds:     [embed],
         components: getComponents(entry, post, op)
     });

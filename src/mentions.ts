@@ -68,7 +68,7 @@ async function send(input: Blip | Comment | ForumPost, avatar: Post | null, type
         comment:   { title: "New Comment by ", url: "https://e621.net/comments/" },
         forumPost: { title: "New Forum Post by ", url: "https://e621.net/forum_posts/" }
     }[type];
-    await discord.rest.channels.createMessage(config.mentionsChannel, {
+    await discord().rest.channels.createMessage(config.mentionsChannel, {
         embeds: [
             {
                 title:  `${d.title}${user.name}`,

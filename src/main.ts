@@ -1,28 +1,42 @@
-import runAutomated from "./automated.js";
+import runSources from "./sources.js";
 import runChecks from "./checks.js";
 import { discord } from "./clients.js";
 import runMentions from "./mentions.js";
 import statusServer from "@uwu-codes/status-server";
 
+const running: Array<string> = [];
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function runIf(type: string, func: (...args: Array<any>) => any) {
+    if (running.includes(type)) {
+        console.log(`Skipped running ${type} since it's already running`);
+        return;
+    }
+
+    running.push(type);
+    await func();
+    running.splice(running.indexOf(type), 1);
+}
+
 setInterval(async() => {
     const d = new Date();
 
     if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) {
-        await runAutomated();
+        await runIf("sources", runSources);
     }
 
     if (d.getMinutes() === 0 && d.getSeconds() === 0) {
-        await runMentions();
+        await runIf("mentions", runMentions);
     }
 
     if (d.getMinutes() % 5 === 0 && d.getSeconds() === 0) {
-        await runChecks();
+        await runIf("checks", runChecks);
     }
 }, 1000);
 
-const server = statusServer(() => discord.ready);
+const server = statusServer(() => discord().ready);
 process.once("SIGTERM", () => {
-    discord.disconnect();
+    discord().disconnect();
     server.close();
     process.kill(process.pid, "SIGTERM");
 });
