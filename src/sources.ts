@@ -185,10 +185,13 @@ export default async function runSources() {
             return;
         }
 
+        const minDelay = 700;
         const edit = async(): Promise<void> => {
-            let diff: number;
-            if (lastRequest !== 0 && (diff = Date.now() - lastRequest) < 700) {
-                await setTimeout(diff);
+            if (lastRequest !== 0) {
+                const diff = Date.now() - lastRequest;
+                if (diff < minDelay) {
+                    await setTimeout(minDelay - diff);
+                }
             }
             lastRequest = Date.now();
 

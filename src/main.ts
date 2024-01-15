@@ -2,6 +2,7 @@ import runSources from "./sources.js";
 import runChecks from "./checks.js";
 import { discord } from "./clients.js";
 import runMentions from "./mentions.js";
+import runRatios from "./ratios.js";
 import statusServer from "@uwu-codes/status-server";
 
 const running: Array<string> = [];
@@ -23,6 +24,7 @@ setInterval(async() => {
 
     if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) {
         await runIf("sources", runSources);
+        await runIf("rations", runRatios);
     }
 
     if (d.getMinutes() === 0 && d.getSeconds() === 0) {
