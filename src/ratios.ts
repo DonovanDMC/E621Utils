@@ -20,20 +20,24 @@ export default async function runRatios() {
         }
     });
 
+    const totals: Record<string, number> = {};
     const list: Array<string> = [];
     await getExport("tags", async record => {
         if (record.post_count > 0 && r.test(record.name) && !whitelisted.has(record.name)) {
-            console.log(`Clearing ${record.name}`);
+            console.log(`Found ${record.name}`);
             list.push(record.name);
+            totals[record.name] = record.post_count;
         }
     });
 
     await getExport("posts", async record => {
         const tags = list.filter(tag => record.tags.split(" ").includes(tag));
         if (tags.length !== 0) {
+            for (const tag of tags) {
+                console.log("Removed %s (%d) from %d", tag, --totals[tag], record.id);
+            }
+
             await e621.posts.modify(record.id, { remove_tags: tags });
         }
     });
 }
-
-await runRatios();
