@@ -1,5 +1,6 @@
 import { e621, discord } from "./clients.js";
 import { type CacheEntry, readCache, writeCache } from "./cache.js";
+import { isDirectRun } from "./util.js";
 import tagConfig from "../tags.json" assert { type: "json" };
 import config from "../config.json" assert { type: "json" };
 import {
@@ -21,7 +22,7 @@ discord().on("interactionCreate", async interaction => {
         const [command, ...args] = interaction.data.customID.split(":");
         switch (command) {
             case "run-checks": {
-                void run();
+                void runChecks();
                 return interaction.createFollowup({
                     flags:   MessageFlags.EPHEMERAL,
                     content: "Running."
@@ -213,7 +214,7 @@ async function sendDiscord(entry: CacheEntry, post: Post, op: "add" | "remove" |
 }
 
 let running = false;
-export default async function run() {
+export default async function runChecks() {
     if (running) {
         return;
     }
@@ -313,4 +314,8 @@ export default async function run() {
 
     await updateMessage(added.length, removed.length, true);
     running = false;
+}
+
+if (isDirectRun(import.meta.url)) {
+    await runChecks();
 }

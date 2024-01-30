@@ -1,5 +1,6 @@
-import { readCache, writeCache } from "./cache";
-import { discord, e621 } from "./clients";
+import { readCache, writeCache } from "./cache.js";
+import { discord, e621 } from "./clients.js";
+import { isDirectRun } from "./util.js";
 import config from "../config.json" assert { type: "json" };
 import { type Post, type User } from "e621";
 
@@ -85,7 +86,7 @@ async function send(input: Blip | Comment | ForumPost, avatar: Post | null, type
     });
 }
 
-export default async function run() {
+export default async function runMentions() {
     const cache = await readCache();
     const [blips, comments, forumPosts] = await Promise.all([getBlips(), getComments(), getForumPosts()]);
     const newBlips = blips.filter(b => b.id > cache.lastSeen.blip);
@@ -129,4 +130,8 @@ export default async function run() {
     if (oldCache !== JSON.stringify(cache)) {
         await writeCache(cache);
     }
+}
+
+if (isDirectRun(import.meta.url)) {
+    await runMentions();
 }

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
-import { e621 } from "./clients";
-import { getExport } from "./exports";
-import { DAY, exists } from "./util";
+import { e621 } from "./clients.js";
+import { getExport } from "./exports.js";
+import { DAY, isDirectRun, exists } from "./util.js";
 import { setTimeout } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -213,4 +213,8 @@ export default async function runSources() {
         console.log("%d/%d", i, total);
     });
 
+}
+
+if (isDirectRun(import.meta.url)) {
+    await runSources();
 }

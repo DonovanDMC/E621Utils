@@ -1,5 +1,6 @@
-import { e621 } from "./clients";
-import { getExport } from "./exports";
+import { e621 } from "./clients.js";
+import { getExport } from "./exports.js";
+import { isDirectRun } from "./util.js";
 
 const whitelisted = new Set([
     "2:1", "3:1", "3:2", "4:3", "5:3",
@@ -40,4 +41,8 @@ export default async function runRatios() {
             await e621.posts.modify(record.id, { remove_tags: tags });
         }
     });
+}
+
+if (isDirectRun(import.meta.url)) {
+    await runRatios();
 }

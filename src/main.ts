@@ -24,7 +24,7 @@ setInterval(async() => {
 
     if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) {
         await runIf("sources", runSources);
-        await runIf("rations", runRatios);
+        await runIf("ratios", runRatios);
     }
 
     if (d.getMinutes() === 0 && d.getSeconds() === 0) {
