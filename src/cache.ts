@@ -1,11 +1,9 @@
-import { type PathLike } from "node:fs";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dataDir, exists } from "./util.js";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-export const isDocker = await access("/.dockerenv").then(() => true, () => false) || await readFile("/proc/1/cgroup", "utf8").then(contents => contents.includes("docker"));
-const exists = (path: PathLike) => access(path).then(() => true, () => false);
-const dir = isDocker ? "/mnt/data" : new URL("../data/", import.meta.url).pathname;
-if (!await exists(dir)) {
-    await mkdir(dir);
+
+if (!await exists(dataDir)) {
+    await mkdir(dataDir);
 }
 
 export interface CacheEntry {
@@ -16,6 +14,7 @@ export interface CacheEntry {
 }
 
 export interface Cache {
+    changeSeq: number;
     lastSeen: {
         blip: number;
         comment: number;
@@ -26,9 +25,10 @@ export interface Cache {
 }
 
 export async function readCache() {
-    if (!await exists(`${dir}/cache.json`)) {
+    if (!await exists(`${dataDir}/cache.json`)) {
         return {
-            lastSeen: {
+            changeSeq: 0,
+            lastSeen:  {
                 blip:      0,
                 comment:   7576246,
                 forumPost: 372982
@@ -38,9 +38,9 @@ export async function readCache() {
         } satisfies Cache;
     }
 
-    return JSON.parse(await readFile(`${dir}/cache.json`, "utf8")) as Cache;
+    return JSON.parse(await readFile(`${dataDir}/cache.json`, "utf8")) as Cache;
 }
 
 export async function writeCache(cache: Cache) {
-    await writeFile(`${dir}/cache.json`, JSON.stringify(cache));
+    await writeFile(`${dataDir}/cache.json`, JSON.stringify(cache));
 }

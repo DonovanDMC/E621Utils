@@ -58,8 +58,8 @@ export function parse(record: RawPost): PostData {
         parent_id:        record.parent_id === "" ? null : Number(record.parent_id),
         rating:           record.rating,
         score:            Number(record.score),
-        sources:          record.source.replaceAll("\r\n", "\n"),
-        tags:             record.tag_string,
+        sources:          record.source.replaceAll("\r\n", "\n").split("\n"),
+        tags:             record.tag_string.split(" "),
         up_score:         Number(record.up_score),
         updated_at:       record.updated_at === "" ? null : new Date(record.updated_at).toISOString(),
         uploader_id:      record.uploader_id === "" ? null : Number(record.uploader_id),
@@ -93,8 +93,8 @@ export interface PostData {
     parent_id: number | null;
     rating: "s" | "q" | "e";
     score: number;
-    sources: string;
-    tags: string;
+    sources: Array<string>;
+    tags: Array<string>;
     up_score: number;
     updated_at: string | null;
     uploader_id: number | null;

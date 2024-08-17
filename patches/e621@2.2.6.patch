@@ -1,0 +1,49 @@
+diff --git a/build/src/modules/Posts.js b/build/src/modules/Posts.js
+index e5a3ed50bfc439ff8c2706ad00f5ebb851a7e816..9e0cf7c3d1e2e35bc387f35fb1646493096d4c81 100644
+--- a/build/src/modules/Posts.js
++++ b/build/src/modules/Posts.js
+@@ -197,6 +197,8 @@ class Posts {
+             qs.add("post[source_diff]", sourceDiff.trim());
+         if (typeof options.locked_tags === "string")
+             qs.add("post[locked_tags]", options.locked_tags);
++        if (typeof options.source === "string")
++            qs.add("post[source]", options.source);
+         if (Array.isArray(options.locked_tags) && options.locked_tags.length > 0)
+             qs.add("post[locked_tags]", options.locked_tags.join("\n"));
+         if (typeof options.rating === "string")
+diff --git a/build/src/structures/User.d.ts b/build/src/structures/User.d.ts
+index 5316dd6aa5af9559e009256c11160a36a9eab7ae..0114f9d0b6bdaf9e423436f3639d88cbea9bffb1 100644
+--- a/build/src/structures/User.d.ts
++++ b/build/src/structures/User.d.ts
+@@ -27,6 +27,7 @@ export default class User implements UserProperties {
+     can_upload_free: boolean;
+     level_string: string;
+     avatar_id: number | null;
++    favorite_count: number;
+     constructor(main: E621, info: UserProperties);
+     /**
+      * Get the feedback associated with this user
+diff --git a/build/src/types/posts.d.ts b/build/src/types/posts.d.ts
+index 07fff7569369761d8efd836acf4e4e3c188b0b80..56e93fbc18b5037c2e25b4263d70e8fcdab24ce6 100755
+--- a/build/src/types/posts.d.ts
++++ b/build/src/types/posts.d.ts
+@@ -110,6 +110,7 @@ export interface ModifyPostOptions {
+ 	background_color?: string;
+ 	/** requires admin */
+ 	locked_tags?: Array<string> | string;
++    source?: string;
+ }
+ 
+ export interface PostVoteResult {
+diff --git a/build/src/types/users.d.ts b/build/src/types/users.d.ts
+index 9579ea221859369ee0b9f7e78f709f69e2ce4eeb..79bad4afea15cd083027303993543ab7de7d1a72 100755
+--- a/build/src/types/users.d.ts
++++ b/build/src/types/users.d.ts
+@@ -25,6 +25,7 @@ export interface UserProperties {
+ 	can_upload_free: boolean;
+ 	level_string: string; // not hardcoded due to custom instances
+ 	avatar_id: number | null;
++    	favorite_count: number;
+ }
+ 
+ export type DefaultImageSize = "original" | "fit" | "fitv" | "large";

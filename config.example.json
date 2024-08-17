@@ -1,8 +1,0 @@
-{
-  "authUser": "e621 username",
-  "authKey": "e621 token",
-  "token": "Bot <TOKEN>",
-  "guild": "guild id",
-  "tagsChannel": "channel for checks",
-  "mentionsChannel": "channel for mentions"
-}

@@ -109,17 +109,17 @@ export default async function runMentions() {
     }
     const avatars = await e621.posts.search({ tags: `id:${avatarsToFetch.join(",")}` });
     for (const blip of newBlips) {
-        const avatar = avatars.find(a => a.id === users.find(u => u.id === blip.creator_id)?.avatar_id ?? null) ?? null;
+        const avatar = avatars.find(a => a.id === users.find(u => u.id === blip.creator_id)?.avatar_id) ?? null;
         await send(blip, avatar, "blip", users.find(u => u.id === blip.creator_id)!);
     }
 
     for (const comment of newComments) {
-        const avatar = avatars.find(a => a.id === users.find(u => u.id === comment.creator_id)?.avatar_id ?? null) ?? null;
+        const avatar = avatars.find(a => a.id === users.find(u => u.id === comment.creator_id)?.avatar_id) ?? null;
         await send(comment, avatar, "comment", users.find(u => u.id === comment.creator_id)!);
     }
 
     for (const forumPost of newForumPosts) {
-        const avatar = avatars.find(a => a.id === users.find(u => u.id === forumPost.creator_id)?.avatar_id ?? null) ?? null;
+        const avatar = avatars.find(a => a.id === users.find(u => u.id === forumPost.creator_id)?.avatar_id) ?? null;
         await send(forumPost, avatar, "forumPost", users.find(u => u.id === forumPost.creator_id)!);
     }
 

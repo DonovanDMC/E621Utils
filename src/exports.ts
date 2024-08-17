@@ -31,13 +31,13 @@ type ExportConversion<T extends ExportType> =
                         T extends "wiki_pages" ? WikiPageData :
                             never;
 
-async function download(type: string, date = new Date()): Promise<string> {
+async function download(type: string, date = new Date(), rewind = 0, originalDate: Date | null = null): Promise<[date: Date, file: string]> {
     const d = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${(date.getDate()).toString().padStart(2, "0")}`;
     console.log(`Checking for export ${type}-${d}`);
     const file = `${tmpdir()}/${type}-${d}.csv`;
     if (await exists(file)) {
         console.log(`export ${type}-${d} found locally, skipping download`);
-        return file;
+        return [date, file];
     }
 
     const url = `https://e621.net/db_export/${type}-${d}.csv.gz`;
@@ -46,8 +46,13 @@ async function download(type: string, date = new Date()): Promise<string> {
     });
 
     if (test.status === 404) {
+        if (rewind >= 2) {
+            originalDate ??= date;
+            const dd = `${originalDate.getFullYear()}-${(originalDate.getMonth() + 1).toString().padStart(2, "0")}-${(originalDate.getDate()).toString().padStart(2, "0")}`;
+            throw new Error(`Export ${type}-${dd} does not exist, and nothing within 2 days before could be found.`);
+        }
         console.log(`Export ${type}-${d} does not exist, attempting to rewind to a day earlier..`);
-        return download(type, new Date(date.getTime() - DAY));
+        return download(type, new Date(date.getTime() - DAY), ++rewind, originalDate ?? date);
     }
 
     const prevDate = new Date(date.getTime() - DAY);
@@ -69,7 +74,7 @@ async function download(type: string, date = new Date()): Promise<string> {
     });
     console.log(`Finished downloading export ${type}-${d}`);
 
-    return file;
+    return [date, file];
 }
 
 function parseRecord<T extends ExportType>(type: T, record: RawPool | RawPost | RawTagAlias | RawTagImplication | RawTag | RawWikiPage): ExportConversion<T> {
@@ -85,7 +90,6 @@ function parseRecord<T extends ExportType>(type: T, record: RawPool | RawPost | 
 }
 
 export async function getExport<T extends ExportType>(type: T, cb: (record: ExportConversion<T>, rowCount: number) => Promise<void>, date = new Date()) {
-    const d = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${(date.getDate()).toString().padStart(2, "0")}`;
     const parser = parse({
         columns:  true,
         onRecord: parseRecord.bind(null, type)
@@ -96,7 +100,12 @@ export async function getExport<T extends ExportType>(type: T, cb: (record: Expo
             await cb(record as unknown as ExportConversion<T>, rowCount);
         }
     });
-    const file = await download(type, date);
+    const [dd, file] = await download(type, date);
+    if (dd.getTime() !== date.getTime()) {
+        console.log(`Rewound to ${dd.toISOString()} for ${type}`);
+        date = dd;
+    }
+    const d = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${(date.getDate()).toString().padStart(2, "0")}`;
     const strCount = `${tmpdir()}/${type}-${d}.count`;
     const rowCount = (await exists(strCount)) ?
         Number(await readFile(strCount, "utf8")) :
