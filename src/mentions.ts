@@ -48,16 +48,16 @@ interface ForumPost {
     warning_user_id: number;
 }
 
-async function getBlips() {
+export async function getBlips() {
     const data = (await e621.request.get<Array<Blip> | { blips: []; }>("/blips.json?search[body_matches]=Donovan_DMC"))!;
     return !Array.isArray(data) && "blips" in data ? data.blips : data;
 }
 
-async function getComments() {
+export async function getComments() {
     const data = (await e621.request.get<Array<Comment> | { comments: []; }>("/comments.json?group_by=comment&search[body_matches]=Donovan_DMC"))!;
     return !Array.isArray(data) && "comments" in data ? data.comments : data;
 }
-
+export
 async function getForumPosts() {
     const data = (await e621.request.get<Array<ForumPost> | { forum_posts: []; }>("/forum_posts.json?search[body_matches]=Donovan_DMC"))!;
     return !Array.isArray(data) && "forum_posts" in data ? data.forum_posts : data;

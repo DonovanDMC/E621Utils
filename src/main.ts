@@ -3,6 +3,7 @@ import runChecks from "./checks.js";
 import { discord } from "./clients.js";
 import runMentions from "./mentions.js";
 import runRatios from "./ratios.js";
+import { runMilestones } from "./milestones.js";
 import statusServer from "@uwu-codes/status-server";
 
 const running: Array<string> = [];
@@ -19,6 +20,7 @@ async function runIf(type: string, func: (...args: Array<any>) => any) {
     running.splice(running.indexOf(type), 1);
 }
 
+await runMilestones();
 setInterval(async() => {
     const d = new Date();
 
