@@ -145,7 +145,9 @@ async function updateMessage(added: number, removed: number, recreate: boolean) 
     }
     if (recreate || cache.message === null) {
         if (cache.message !== null) {
-            await discord().rest.channels.deleteMessage(config.tagsChannel, cache.message);
+            await discord().rest.channels.deleteMessage(config.tagsChannel, cache.message).catch(err => {
+                console.log("Failed to delete message:", err);
+            });
         }
         cache.message = (await discord().rest.channels.createMessage(config.tagsChannel, content)).id;
     }
