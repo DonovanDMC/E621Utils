@@ -1,7 +1,7 @@
 import { readCache, writeCache } from "./cache.js";
 import { discord, e621 } from "./clients.js";
 import { isDirectRun } from "./util.js";
-import config from "../config.json" assert { type: "json" };
+import config from "../config.json" with { type: "json" };
 import { type Post, type User } from "e621";
 
 // the public version of the e621 package doesn't support blips/comments/forum posts

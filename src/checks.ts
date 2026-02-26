@@ -1,8 +1,8 @@
 import { e621, discord } from "./clients.js";
 import { type CacheEntry, readCache, writeCache } from "./cache.js";
 import { isDirectRun } from "./util.js";
-import tagConfig from "../tags.json" assert { type: "json" };
-import config from "../config.json" assert { type: "json" };
+import tagConfig from "../tags.json" with { type: "json" };
+import config from "../config.json" with { type: "json" };
 import {
     type EmbedOptions,
     MessageFlags,

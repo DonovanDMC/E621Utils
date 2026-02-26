@@ -1,6 +1,6 @@
+import { DefaultParsers } from "e621-export-downloader";
 import { e621 } from "./clients.js";
 import { getExport } from "./exports.js";
-import type { PostData } from "./parsers/posts.js";
 import { isDirectRun } from "./util.js";
 
 const tagRemovals = [
@@ -18,7 +18,7 @@ const tagRemovals = [
     }
 ];
 
-function recordMatches(data: PostData, tags: string | Array<string>) {
+function recordMatches(data: DefaultParsers.PostData, tags: string | Array<string>) {
     if (!Array.isArray(tags)) {
         tags = tags.split(" ");
     }

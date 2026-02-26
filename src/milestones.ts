@@ -1,7 +1,7 @@
 import { getClosestMilestone, getMilestoneTime, readCache, writeCache } from "./cache.js";
 import { discord, e621 } from "./clients.js";
 import { isDirectRun } from "./util.js";
-import config from "../config.json" assert { type: "json" };
+import config from "../config.json" with { type: "json" };
 
 async function notify(id: number) {
     const post = (await e621.posts.get(id))!;

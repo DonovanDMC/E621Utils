@@ -1,4 +1,4 @@
-import config from "../config.json" assert { type: "json" };
+import config from "../config.json" with { type: "json" };
 import { ApplicationCommandTypes, Client } from "oceanic.js";
 import E621 from "e621";
 
