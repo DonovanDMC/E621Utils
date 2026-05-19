@@ -1,6 +1,6 @@
 services:
   e621-utils:
-    build: .
+    image: ghcr.io/donovandmc/e621utils
     container_name: e621-utils
     volumes:
       - ./data:/mnt/data
