@@ -80,7 +80,7 @@ async function getCacheDefault(type: "lastMilestone" | "lastSeen.blip" | "lastSe
 
 export async function readCache() {
     if (!await exists(`${dataDir}/cache.json`)) {
-        return {
+        const cache = {
             changeSeq:     0,
             lastMilestone: await getCacheDefault("lastMilestone"),
             lastSeen:      {
@@ -91,6 +91,8 @@ export async function readCache() {
             message: null,
             posts:   []
         } satisfies Cache;
+        await writeCache(cache); // ensure cache is written so we don't continually fetch defaults
+        return cache;
     }
     const cache = JSON.parse(await readFile(`${dataDir}/cache.json`, "utf8")) as Cache;
     if (!cache.lastMilestone) {
