@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   e621-utils:
     build: .

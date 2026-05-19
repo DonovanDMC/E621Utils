@@ -24,7 +24,7 @@ await runMilestones();
 setInterval(async() => {
     const d = new Date();
 
-    if (d.getMinutes() === 0 && d.getSeconds() === 0) {
+    if ((d.getMinutes() % 15) === 0 && d.getSeconds() === 0) {
         await runIf("mentions", runMentions);
     }
 }, 1000);
