@@ -1,6 +1,6 @@
 import { e621, discord } from "./clients.js";
 import { type CacheEntry, readCache, writeCache } from "./cache.js";
-import { isDirectRun } from "./util.js";
+import { getFileURL, isDirectRun } from "./util.js";
 import tagConfig from "../tags.json" with { type: "json" };
 import config from "../config.json" with { type: "json" };
 import {
@@ -14,7 +14,7 @@ import {
     type EditMessageOptions
 } from "oceanic.js";
 import chunk from "chunk";
-import { type Post } from "e621";
+import { BasicPost, ExtendedPost, type Post } from "e621";
 
 discord().on("interactionCreate", async interaction => {
     if (interaction instanceof ComponentInteraction) {
@@ -39,7 +39,7 @@ discord().on("interactionCreate", async interaction => {
                 }
 
                 const embeds: Array<EmbedOptions> = [];
-                const posts = await e621.posts.search({ tags: `id:${cache.posts.map(c => c.post).join(",")}` });
+                const posts = await e621.posts.search({ tags: `id:${cache.posts.map(c => c.post).join(",")}`, v2: true, mode: "extended" });
                 for (const entry of cache.posts) {
                     embeds.push(makeEmbed(entry, posts.find(p => p.id === entry.post) ?? null, null));
                 }
@@ -149,14 +149,14 @@ async function updateMessage(added: number, removed: number, recreate: boolean) 
                 console.log("Failed to delete message:", err);
             });
         }
-        cache.message = (await discord().rest.channels.createMessage(config.tagsChannel, content)).id;
+        cache.message = (await discord().rest.channels.createMessage(config.tagsChannel, content as CreateMessageOptions)).id;
     }
     if (oldCache !== JSON.stringify(cache)) {
         await writeCache(cache);
     }
 }
 
-function makeEmbed(entry: CacheEntry, post: Post | null, op: "add" | "remove" | null) {
+function makeEmbed(entry: CacheEntry, post: ExtendedPost | null, op: "add" | "remove" | null) {
     const color = op === "add" ? GREEN : (op === "remove" ? RED : YELLOW);
     if (post === null) {
         return {
@@ -171,13 +171,13 @@ function makeEmbed(entry: CacheEntry, post: Post | null, op: "add" | "remove" | 
         timestamp:   new Date().toISOString(),
         url:         `https://e621.net/posts/${entry.post}`,
         color,
-        image:       ["webm", "swf"].includes(post.file.ext) ? undefined : {
-            url: post.file.url
+        image:       ["webm", "mp4", "swf"].includes(post.files.meta.ext)  ? undefined : {
+            url: getFileURL(post)
         }
-    };
+    } satisfies EmbedOptions;
 }
 
-function getComponents(cache: CacheEntry, post: Post, op: "add" | "remove" | null): Array<MessageActionRow> {
+function getComponents(cache: CacheEntry, post: ExtendedPost, op: "add" | "remove" | null): Array<MessageActionRow> {
     const base: Array<MessageActionRow> = [
         {
             type:       ComponentTypes.ACTION_ROW,
@@ -196,7 +196,7 @@ function getComponents(cache: CacheEntry, post: Post, op: "add" | "remove" | nul
         case "remove": return base;
         case null:
         case "add": {
-            base[0].components.push({
+            base[0]!.components.push({
                 type:     ComponentTypes.BUTTON,
                 style:    ButtonStyles.DANGER,
                 label:    "Remove Post",
@@ -207,7 +207,7 @@ function getComponents(cache: CacheEntry, post: Post, op: "add" | "remove" | nul
     }
 }
 
-async function sendDiscord(entry: CacheEntry, post: Post, op: "add" | "remove" | null) {
+async function sendDiscord(entry: CacheEntry, post: ExtendedPost, op: "add" | "remove" | null) {
     const embed = makeEmbed(entry, post, op);
     await discord().rest.channels.createMessage(config.tagsChannel, {
         embeds:     [embed],
@@ -225,7 +225,7 @@ export default async function runChecks() {
     const added: Array<CacheEntry> = [], removed: Array<CacheEntry> = [];
     const cache = await readCache();
     const newCache = [] as Array<CacheEntry>;
-    const allPosts: Array<Post> = [];
+    const allPosts: Array<ExtendedPost> = [];
     for (const { base, groups } of tagConfig) {
         let tags = "";
         if (groups !== null) {
@@ -236,7 +236,7 @@ export default async function runChecks() {
         tags += base;
         console.log("Checking %s...", groups === null ? `"${base}"` : groups.map(g => `"${g} ${base}"`).join(", "));
 
-        const posts = await e621.posts.search({ tags });
+        const posts = await e621.posts.search({ tags, v2: true, mode: "extended" });
         allPosts.push(...posts);
         if (posts.length === 0) {
             console.log("No posts found.");
@@ -273,7 +273,7 @@ export default async function runChecks() {
                         since:  new Date().toISOString()
                     });
                 } else {
-                    newCache[alreadyFound].tags = [...newCache[alreadyFound].tags, ...foundFor];
+                    newCache[alreadyFound]!.tags = [...newCache[alreadyFound]!.tags, ...foundFor];
                 }
             }
         }
@@ -305,7 +305,7 @@ export default async function runChecks() {
     }
 
     if (removed.length !== 0) {
-        const posts = await e621.posts.search({ tags: `id:${removed.map(c => c.post).join(",")}` });
+        const posts = await e621.posts.search({ tags: `id:${removed.map(c => c.post).join(",")}`, v2: true, mode: "extended" });
         allPosts.push(...posts);
     }
 

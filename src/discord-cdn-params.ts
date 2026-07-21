@@ -1,12 +1,12 @@
 import { e621 } from "./clients.js";
-import { getExport } from "./exports.js";
+import ExportsClient from "./exports.js";
 import RequestQueue from "./queue.js";
 import { isDirectRun } from "./util.js";
 
 let i = 0;
 export default async function runDiscordCDNParams() {
     const d = Date.now();
-    await getExport("posts", async record => {
+    for await (const [record] of ExportsClient.getDeferredReader("posts")) {
         if (++i % 25000 === 0) {
             console.log(i);
         }
@@ -104,12 +104,12 @@ export default async function runDiscordCDNParams() {
                     }
                 }
                 console.log(`https://e621.net/posts/${post.id}`, "Add:", add, "Remove:", remove);
-                await post.modify({
+                await post.update({
                     source: sources.join("\n")
                 });
             });
         }
-    });
+    }
 }
 
 if (isDirectRun(import.meta.url)) {

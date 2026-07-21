@@ -1,5 +1,5 @@
 import { e621 } from "./clients.js";
-import { getExport } from "./exports.js";
+import ExportsClient from "./exports.js";
 import RequestQueue from "./queue.js";
 import { isDirectRun } from "./util.js";
 
@@ -29,7 +29,7 @@ const tags = [
 
 let i = 0;
 export default async function runNuke() {
-    await getExport("posts", async record => {
+    for await (const [record] of ExportsClient.getDeferredReader("posts")) {
         if (++i % 25000 === 0) {
             console.log(i);
         }
@@ -41,10 +41,10 @@ export default async function runNuke() {
             }
 
             await RequestQueue.add(async() => {
-                await e621.posts.modify(record.id, { remove_tags: includedTags });
+                await e621.posts.update(record.id, { tag_string_diff: `-${includedTags}` });
             });
         }
-    });
+    }
 }
 
 if (isDirectRun(import.meta.url)) {

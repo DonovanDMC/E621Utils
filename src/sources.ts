@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 import { e621 } from "./clients.js";
-import { getExport } from "./exports.js";
 import { DAY, isDirectRun, exists, dataDir } from "./util.js";
 import RequestQueue from "./queue.js";
 import { readFile, rm, writeFile } from "node:fs/promises";
+import ExportsClient from "./exports.js";
 
 const remove = Symbol.for("e621.twitter.remove");
 const sourceReplacements = [
@@ -72,43 +72,43 @@ const sourceReplacements = [
     {
         regex: /^https?:\/\/mobile\.(twitter|x)\.com(?<path>\S+)$/i,
         async fix(this: void, r: RegExpExecArray) {
-            return `https://twitter.com${r.groups!.path.split("?")[0]}`;
+            return `https://twitter.com${r.groups!.path!.split("?")[0]}`;
         }
     },
     {
         regex: /^https?:\/\/(?:.*\.)?[fv]xtwitter\.com(?<path>\S+)$/i,
         async fix(this: void, r: RegExpExecArray) {
-            return `https://twitter.com${r.groups!.path.split("?")[0]}`;
+            return `https://twitter.com${r.groups!.path!.split("?")[0]}`;
         }
     },
     {
         regex: /^https?:\/\/(?:.*\.)?fixupx\.com(?<path>\S+)$/i,
         async fix(this: void, r: RegExpExecArray) {
-            return `https://twitter.com${r.groups!.path.split("?")[0]}`;
+            return `https://twitter.com${r.groups!.path!.split("?")[0]}`;
         }
     },
     {
         regex: /^https?:\/\/fxfuraffinity\.net(?<path>\S+)$/i,
         async fix(this: void, r: RegExpExecArray) {
-            return `https://furaffinity.net${r.groups!.path.split("?")[0]}`;
+            return `https://furaffinity.net${r.groups!.path!.split("?")[0]}`;
         }
     },
     {
         regex: /^https?:\/\/(twitter|x)\.com\/(?<handle>\w{1,15})\/status\/(?<tweet>\d+)\/photo\/\d+(?<path>\S*)/i,
         async fix(this: void, r: RegExpExecArray) {
-            return `https://twitter.com/${r.groups!.handle}/status/${r.groups!.tweet}${r.groups!.path.split("?")[0]}`;
+            return `https://twitter.com/${r.groups!.handle}/status/${r.groups!.tweet}${r.groups!.path!.split("?")[0]}`;
         }
     },
     {
         regex: /^https?:\/\/(twitter|x)\.com(?<path>.+)\?.*$/i,
         async fix(this: void, r: RegExpExecArray) {
-            return `https://twitter.com${r.groups!.path.split("?")[0]}`;
+            return `https://twitter.com${r.groups!.path!.split("?")[0]}`;
         }
     },
     {
         regex: /^https?:\/\/x\.com(?<path>.+)$/i,
         async fix(this: void, r: RegExpExecArray) {
-            return `https://twitter.com${r.groups!.path.split("?")[0]}`;
+            return `https://twitter.com${r.groups!.path!.split("?")[0]}`;
         }
     },
     {
@@ -152,7 +152,7 @@ export default async function runSources() {
         changes.unshift(...JSON.parse(await readFile(`${dataDir}/changes.json`, "utf8")) as typeof changes);
     }
 
-    await getExport("posts", async(record, total) => {
+    for await (const [record, total] of ExportsClient.getDeferredReader("posts")) {
         i++;
         if (lastPost && lastPost >= record.id) {
             if ((i % 25000) === 0) {
@@ -222,7 +222,7 @@ export default async function runSources() {
             outer: for (const source of Array.from(lpsources)) {
                 let match: RegExpMatchArray | null;
                 if ((match = TWITTER_HANDLE_REGEX.exec(source))) {
-                    handles.push([source, match.groups!.handle]);
+                    handles.push([source, match.groups!.handle!]);
                     continue;
                 }
 
@@ -248,9 +248,8 @@ export default async function runSources() {
 
         const edit = async(): Promise<void> => {
             await RequestQueue.add(async() => {
-                await e621.posts.modify(record.id, {
-                    add_sources:    addSources,
-                    remove_sources: removeSources
+                await e621.posts.update(record.id, {
+                    source_diff: [...addSources, ...removeSources.map(s => `-${s}`)].join("\n")
                 }).then(() => changes.push({ add: addSources,  id: record.id, remove: removeSources }));
             });
         };
@@ -265,7 +264,7 @@ export default async function runSources() {
         if (i % 10000 === 0) {
             await writeFile(`${dataDir}/changes.json`, JSON.stringify(changes));
         }
-    });
+    }
 
     await writeFile(`${dataDir}/changes.json`, JSON.stringify(changes));
     await writeFile(`${dataDir}/sources.seq`, String(maxChangeSeq));

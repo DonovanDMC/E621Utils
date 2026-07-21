@@ -1,5 +1,5 @@
 import { e621 } from "./clients.js";
-import { getExport } from "./exports.js";
+import ExportsClient from "./exports.js";
 import { isDirectRun } from "./util.js";
 
 const whitelisted = new Set([
@@ -15,7 +15,7 @@ const whitelisted = new Set([
 export default async function runRatios() {
     const r = /^\d+:\d+$/;
     const aliased: Record<string, string> = {};
-    await getExport("tag_aliases", async record => {
+    for await (const [record] of ExportsClient.getDeferredReader("tag_aliases")) {
         if (r.test(record.antecedent_name)) {
             aliased[record.antecedent_name] = record.consequent_name;
         }
@@ -23,12 +23,12 @@ export default async function runRatios() {
         if (r.test(record.consequent_name)) {
             aliased[record.consequent_name] = record.antecedent_name;
         }
-    });
+    }
 
     const totals: Record<string, number> = {};
     const list: Array<string> = [];
-    await getExport("tags", async record => {
-        if (record.post_count > 0 && r.test(record.name) && !whitelisted.has(record.name) && !whitelisted.has(aliased[record.name])) {
+    for await (const [record] of ExportsClient.getDeferredReader("tags")) {
+        if (record.post_count > 0 && r.test(record.name) && !whitelisted.has(record.name) && !whitelisted.has(aliased[record.name]!)) {
             if (record.post_count > 25) {
                 console.log(`Skipping ${record.name} (${record.post_count})`);
                 return;
@@ -37,18 +37,18 @@ export default async function runRatios() {
             list.push(record.name);
             totals[record.name] = record.post_count;
         }
-    });
+    }
 
-    await getExport("posts", async record => {
+    for await (const [record] of ExportsClient.getDeferredReader("posts")) {
         const tags = list.filter(tag => record.tags.includes(tag));
         if (tags.length !== 0) {
             for (const tag of tags) {
-                console.log("Removed %s (%d) from %d", tag, --totals[tag], record.id);
+                console.log("Removed %s (%d) from %d", tag, --totals[tag]!, record.id);
             }
 
-            await e621.posts.modify(record.id, { remove_tags: tags });
+            await e621.posts.update(record.id, { tag_string: `-${tags}` });
         }
-    });
+    }
 }
 
 if (isDirectRun(import.meta.url)) {

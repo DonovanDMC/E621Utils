@@ -1,69 +1,22 @@
 import { readCache, writeCache } from "./cache.js";
 import { discord, e621 } from "./clients.js";
-import { isDirectRun } from "./util.js";
+import { getFileURL, isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
-import { type Post, type User } from "e621";
-
-// the public version of the e621 package doesn't support blips/comments/forum posts
-// we don't support pagination, so things *could* in theory break
-type WarningType = "warning"| "record" | "ban";
-interface Blip {
-    body: string;
-    created_at: string;
-    creator_id: number;
-    creator_name: string;
-    id: number;
-    is_hidden: boolean;
-    response_to: number | null;
-    updated_at: string;
-    warning_type: WarningType;
-    warning_user_id: number | null;
-}
-interface Comment {
-    body: string;
-    created_at: string;
-    creator_id: number;
-    creator_name: string;
-    do_not_bump_post: boolean;
-    id: number;
-    is_hidden: boolean;
-    is_sticky: boolean;
-    post_id: number;
-    score: number;
-    updated_at: string;
-    updater_id: number;
-    warning_type: WarningType;
-    warning_user_id: number | null;
-}
-interface ForumPost {
-    body: string;
-    created_at: string;
-    creator_id: number;
-    id: number;
-    is_hidden: boolean;
-    topic_id: number;
-    updated_at: string;
-    updater_id: number;
-    warning_type: WarningType;
-    warning_user_id: number;
-}
+import { BasicPost, Blip, Comment, ForumPost, type Post, type User } from "e621";
 
 export async function getBlips() {
-    const data = (await e621.request.get<Array<Blip> | { blips: []; }>("/blips.json?search[body_matches]=Donovan_DMC"))!;
-    return !Array.isArray(data) && "blips" in data ? data.blips : data;
+    return e621.blips.search({ body_matches: "Donovan_DMC" });
 }
 
 export async function getComments() {
-    const data = (await e621.request.get<Array<Comment> | { comments: []; }>("/comments.json?group_by=comment&search[body_matches]=Donovan_DMC"))!;
-    return !Array.isArray(data) && "comments" in data ? data.comments : data;
-}
-export
-async function getForumPosts() {
-    const data = (await e621.request.get<Array<ForumPost> | { forum_posts: []; }>("/forum_posts.json?search[body_matches]=Donovan_DMC"))!;
-    return !Array.isArray(data) && "forum_posts" in data ? data.forum_posts : data;
+    return e621.comments.search({ body_matches: "Donovan_DMC" });
 }
 
-async function send(input: Blip | Comment | ForumPost, avatar: Post | null, type: "blip" | "comment" | "forumPost", user: User) {
+export async function getForumPosts() {
+    return e621.forumPosts.search({ body_matches: "Donovan_DMC" });
+}
+
+async function send(input: Blip | Comment | ForumPost, avatar: BasicPost | null, type: "blip" | "comment" | "forumPost", user: User) {
     const d = {
         blip:      { title: "New Blip by ", url: "https://e621.net/blips/" },
         comment:   { title: "New Comment by ", url: "https://e621.net/comments/" },
@@ -76,7 +29,7 @@ async function send(input: Blip | Comment | ForumPost, avatar: Post | null, type
                 url:    `${d.url}${input.id}`,
                 author: {
                     name:    user.name,
-                    iconURL: avatar?.file.url ?? undefined,
+                    iconURL: avatar ? getFileURL(avatar) : undefined,
                     url:     `https://e621.net/users/${input.creator_id}`
                 },
                 description: input.body.length > 2048 ? `${input.body.slice(0, 2045)}...` : input.body,
@@ -107,7 +60,7 @@ export default async function runMentions() {
             }
         }
     }
-    const avatars = await e621.posts.search({ tags: `id:${avatarsToFetch.join(",")}` });
+    const avatars = await e621.posts.search({ tags: `id:${avatarsToFetch.join(",")}`, v2: true });
     for (const blip of newBlips) {
         const avatar = avatars.find(a => a.id === users.find(u => u.id === blip.creator_id)?.avatar_id) ?? null;
         await send(blip, avatar, "blip", users.find(u => u.id === blip.creator_id)!);

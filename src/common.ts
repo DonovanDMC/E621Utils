@@ -1,6 +1,6 @@
 import { DefaultParsers } from "e621-export-downloader";
 import { e621 } from "./clients.js";
-import { getExport } from "./exports.js";
+import ExportsClient from "./exports.js";
 import { isDirectRun } from "./util.js";
 
 const tagRemovals = [
@@ -61,7 +61,7 @@ async function doWithRetry(func: () => Promise<void>): Promise<void> {
 
 export default async function runCommon() {
     let i = 0;
-    await getExport("posts", async (record, total) => {
+    for await (const [record, total] of ExportsClient.getDeferredReader("posts")) {
         const remove: Array<string> = [];
         for (const config of tagRemovals) {
             if (recordMatches(record, config.search)) {
@@ -75,14 +75,14 @@ export default async function runCommon() {
         if (remove.length !== 0) {
             console.log(`Removing "${remove.join(" ")}" from ${record.id}`);
             await doWithRetry(async() => {
-                await e621.posts.modify(record.id, { remove_tags: remove });
+                await e621.posts.update(record.id, { tag_string_diff: `-${remove}` });
             });
         }
 
         if ((++i % 100_000) === 0) {
             console.log("%d/%d", i, total);
         }
-    });
+    }
 }
 
 if (isDirectRun(import.meta.url)) {

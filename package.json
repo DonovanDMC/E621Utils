@@ -13,7 +13,7 @@
     "dev": "npm run down && npm run up:dev",
     "dev:build": "npm run down && npm run up",
     "update": "git pull && git submodule update --init --recursive --remote && docker compose pull && npm run down && npm run up:d",
-    "manual": "DEBUG=* tsx src/discord-cdn-params.ts && DEBUG=* tsx src/ratios.ts && DEBUG=* tsx src/nuke-tags.ts"
+    "manual": "DEBUG=* bun src/discord-cdn-params.ts && DEBUG=* bun src/ratios.ts && DEBUG=* bun src/nuke-tags.ts"
   },
   "repository": {
     "type": "git",
@@ -39,8 +39,8 @@
   "dependencies": {
     "@uwu-codes/status-server": "^1.0.1",
     "chunk": "^0.0.3",
-    "e621": "^2.2.6",
-    "e621-export-downloader": "^1.0.2",
+    "e621": "^3.2.1",
+    "e621-export-downloader": "^1.1.4",
     "microjob": "^0.7.0",
     "oceanic.js": "^1.14.0"
   },

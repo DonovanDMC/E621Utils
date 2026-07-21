@@ -62,7 +62,7 @@ export function getClosestMilestone(id: number) {
 
 export async function getLatestMilestone() {
     const [post] = await e621.posts.search({ limit: 1 });
-    return getClosestMilestone(post.id);
+    return getClosestMilestone(post!.id);
 }
 
 async function getCacheDefault(type: "lastMilestone" | "lastSeen.blip" | "lastSeen.comment" | "lastSeen.forumPost") {
