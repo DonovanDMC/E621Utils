@@ -1,5 +1,8 @@
 import { setTimeout } from "node:timers/promises";
 
+/** e621 rate limits requests to 2/sec (500ms); wait comfortably longer than that floor between requests. */
+const MIN_REQUEST_INTERVAL_MS = 700;
+
 export default class RequestQueue {
     private static processing = false;
     private static queue: Array<{ exec(this: void): Promise<unknown>; reject(this: void, reason?: unknown): void; resolve(this: void, value?: unknown): void; }> = [];
@@ -15,7 +18,7 @@ export default class RequestQueue {
         if (entry) {
             await entry.exec().then(entry.resolve, entry.reject);
             const time = Date.now() - start;
-            const diff = Math.max(0, 700 - time);
+            const diff = Math.max(0, MIN_REQUEST_INTERVAL_MS - time);
             if (diff > 0) {
                 await setTimeout(diff);
             }

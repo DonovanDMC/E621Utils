@@ -1,18 +1,29 @@
 import { e621 } from "./clients.js";
 import ExportsClient from "./exports.js";
+import Progress from "./progress.js";
 import RequestQueue from "./queue.js";
 import { isDirectRun } from "./util.js";
 
 let i = 0;
 export default async function runDiscordCDNParams() {
+    const progress = await Progress.load("discord-cdn-params");
+    if (progress.finished) {
+        return;
+    }
+
     const d = Date.now();
     for await (const [record] of ExportsClient.getDeferredReader("posts")) {
         if (++i % 25000 === 0) {
             console.log(i);
         }
 
+        if (progress.shouldSkip(record.id)) {
+            continue;
+        }
+
         if (record.change_seq < 59_000_000) {
-            return;
+            await progress.update(record.id);
+            continue;
         }
 
         let changes = false;
@@ -39,7 +50,8 @@ export default async function runDiscordCDNParams() {
         }
 
         if (!changes) {
-            return;
+            await progress.update(record.id);
+            continue;
         }
 
         const post = (await RequestQueue.add(async() => e621.posts.get(record.id)))!;
@@ -109,7 +121,11 @@ export default async function runDiscordCDNParams() {
                 });
             });
         }
+
+        await progress.update(record.id, true);
     }
+
+    await progress.finish();
 }
 
 if (isDirectRun(import.meta.url)) {

@@ -1,5 +1,6 @@
-import { e621 } from "./clients.js";
 import ExportsClient from "./exports.js";
+import Progress from "./progress.js";
+import { safeRemoveTags } from "./safeTagRemoval.js";
 import { isDirectRun } from "./util.js";
 
 const whitelisted = new Set([
@@ -39,16 +40,29 @@ export default async function runRatios() {
         }
     }
 
+    const progress = await Progress.load("ratios", list);
+    if (progress.finished) {
+        return;
+    }
+
     for await (const [record] of ExportsClient.getDeferredReader("posts")) {
+        if (progress.shouldSkip(record.id)) {
+            continue;
+        }
+
         const tags = list.filter(tag => record.tags.includes(tag));
         if (tags.length !== 0) {
-            for (const tag of tags) {
-                console.log("Removed %s (%d) from %d", tag, --totals[tag]!, record.id);
+            if (await safeRemoveTags(record.id, tags)) {
+                for (const tag of tags) {
+                    console.log("Removed %s (%d) from %d", tag, --totals[tag]!, record.id);
+                }
             }
-
-            await e621.posts.update(record.id, { tag_string: `-${tags}` });
         }
+
+        await progress.update(record.id, tags.length !== 0);
     }
+
+    await progress.finish();
 }
 
 if (isDirectRun(import.meta.url)) {

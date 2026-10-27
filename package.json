@@ -39,7 +39,7 @@
   "dependencies": {
     "@uwu-codes/status-server": "^1.0.1",
     "chunk": "^0.0.3",
-    "e621": "^3.2.1",
+    "e621": "^3.4.0",
     "e621-export-downloader": "^1.1.4",
     "microjob": "^0.7.0",
     "oceanic.js": "^1.14.0"

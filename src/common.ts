@@ -1,6 +1,7 @@
 import { DefaultParsers } from "e621-export-downloader";
-import { e621 } from "./clients.js";
 import ExportsClient from "./exports.js";
+import Progress from "./progress.js";
+import { safeRemoveTags } from "./safeTagRemoval.js";
 import { isDirectRun } from "./util.js";
 
 const tagRemovals = [
@@ -60,8 +61,21 @@ async function doWithRetry(func: () => Promise<void>): Promise<void> {
 }
 
 export default async function runCommon() {
+    const progress = await Progress.load("common", tagRemovals);
+    if (progress.finished) {
+        return;
+    }
+
     let i = 0;
     for await (const [record, total] of ExportsClient.getDeferredReader("posts")) {
+        if ((++i % 100_000) === 0) {
+            console.log("%d/%d", i, total);
+        }
+
+        if (progress.shouldSkip(record.id)) {
+            continue;
+        }
+
         const remove: Array<string> = [];
         for (const config of tagRemovals) {
             if (recordMatches(record, config.search)) {
@@ -73,16 +87,17 @@ export default async function runCommon() {
         }
 
         if (remove.length !== 0) {
-            console.log(`Removing "${remove.join(" ")}" from ${record.id}`);
             await doWithRetry(async() => {
-                await e621.posts.update(record.id, { tag_string_diff: `-${remove}` });
+                if (await safeRemoveTags(record.id, remove)) {
+                    console.log(`Removed "${remove.join(" ")}" from ${record.id}`);
+                }
             });
         }
 
-        if ((++i % 100_000) === 0) {
-            console.log("%d/%d", i, total);
-        }
+        await progress.update(record.id, remove.length !== 0);
     }
+
+    await progress.finish();
 }
 
 if (isDirectRun(import.meta.url)) {
