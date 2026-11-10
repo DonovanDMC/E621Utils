@@ -29,6 +29,8 @@ export interface StreamState {
     pendingSources: Array<PendingSource>;
     /** tags we've tried removing, per post. same as editedSources, these are never removed a second time */
     removedTags: Record<number, Array<string>>;
+    /** the sets used by the tag checks, as of the last time they were loaded */
+    sets?: Record<string, Array<number>>;
     /** when the stream was first started, anything before this is left to the backfill */
     startedAt?: number;
 }

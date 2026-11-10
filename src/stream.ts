@@ -1,3 +1,4 @@
+import { initChecks, needsTagCheck, onSetChanged, recheckPost, setSubscriptions } from "./checks.js";
 import discordCDNParams, { fixExpiredSources } from "./discord-cdn-params.js";
 import { dmailsEnabled, handleDMail } from "./dmails.js";
 import type { HandlerPost, PostHandler } from "./handler.js";
@@ -8,7 +9,7 @@ import ratios from "./ratios.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
-import { E621Stream } from "e621stream";
+import { E621Stream, type LegacyPost } from "e621stream";
 
 const handlers: Array<PostHandler> = [discordCDNParams, ratios, nukeTags];
 
@@ -74,14 +75,20 @@ export async function runQueued(run: () => Promise<void>) {
     return new Promise<void>((resolve, reject) => enqueue(null, async() => run().then(resolve, reject)));
 }
 
-function onPost(id: string, post: HandlerPost) {
+function onPost(id: string, post: LegacyPost) {
     const matched = matchHandlers(post);
-    if (matched.length === 0) {
+    const tagCheck = needsTagCheck(post);
+    if (matched.length === 0 && !tagCheck) {
         skip(id);
         return;
     }
 
-    enqueue(id, async() => runHandlers(post, matched));
+    enqueue(id, async() => {
+        await runHandlers(post, matched);
+        if (tagCheck) {
+            await recheckPost(post.id).catch(err => logger.error(`[stream] Tag check failed on post ${post.id}:`, err));
+        }
+    });
 }
 
 function onMention(id: string, type: Parameters<typeof handleMention>[0], input: Parameters<typeof handleMention>[1]) {
@@ -91,6 +98,10 @@ function onMention(id: string, type: Parameters<typeof handleMention>[0], input:
     }
 
     enqueue(id, async() => handleMention(type, input).catch(err => logger.error(`[stream] Failed to send the mention from ${type} ${input.id}:`, err)));
+}
+
+function onSet(id: string, setId: number) {
+    enqueue(id, async() => onSetChanged(setId).catch(err => logger.error(`[stream] Failed to update set ${setId}:`, err)));
 }
 
 let stream: E621Stream | undefined;
@@ -113,7 +124,7 @@ export async function startStream() {
         client:        "E621Utils",
         // STREAM_CURSOR can be an event id or a ms timestamp, for replaying by hand
         cursor:        process.env.STREAM_CURSOR ?? cursor ?? undefined,
-        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create", ...(dmailsEnabled ? ["dmail.create"] : [])]
+        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create", ...(dmailsEnabled ? ["dmail.create"] : []), ...setSubscriptions()]
     });
 
     stream.on("ready", ready => {
@@ -131,6 +142,12 @@ export async function startStream() {
     stream.on("blip.create", event => onMention(event.id, "blip", event.data));
     stream.on("comment.create", event => onMention(event.id, "comment", event.data));
     stream.on("forum_post.create", event => onMention(event.id, "forumPost", event.data));
+    stream.on("post_set.add_posts", event => onSet(event.id, event.data.post_set.id));
+    stream.on("post_set.remove_posts", event => onSet(event.id, event.data.post_set.id));
+    // private, so they aren't part of the cursor and skip the cursor queue
+    const onPrivateSet = (setId: number) => void runQueued(async() => onSetChanged(setId)).catch(err => logger.error(`[stream] Failed to update set ${setId}:`, err));
+    stream.on("private_post_set.add_posts", event => onPrivateSet(event.data.post_set.id));
+    stream.on("private_post_set.remove_posts", event => onPrivateSet(event.data.post_set.id));
     // private events aren't part of the cursor, the stream keeps track of which dmails it's sent itself
     stream.on("dmail.create", event => void handleDMail(event.data).catch(err => logger.error(`[stream] Failed to send dmail ${event.data.id}:`, err)));
 
@@ -145,5 +162,6 @@ export async function startStream() {
 }
 
 if (isDirectRun(import.meta.url)) {
+    await initChecks();
     await startStream();
 }

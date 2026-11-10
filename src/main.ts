@@ -1,6 +1,6 @@
 import runSources from "./sources.js";
 import { runBackfill } from "./backfill.js";
-import runChecks from "./checks.js";
+import { initChecks } from "./checks.js";
 import { discord } from "./clients.js";
 import logger, { flush } from "./logger.js";
 import { runMilestones } from "./milestones.js";
@@ -36,6 +36,7 @@ process.once("uncaughtException", async err => {
 
 logger.info("Starting");
 await runMilestones();
+await initChecks();
 await startStream();
 void runIf("backfill", runBackfill);
 // waits for a new enough export, then does nothing once it's done

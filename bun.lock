@@ -9,7 +9,7 @@
         "chunk": "^0.0.3",
         "e621": "^3.4.0",
         "e621-export-downloader": "^1.1.4",
-        "e621stream": "^0.0.0",
+        "e621stream": "^0.0.2",
         "microjob": "^0.7.0",
         "oceanic.js": "^1.14.0",
       },
@@ -294,7 +294,7 @@
 
     "e621-export-downloader": ["e621-export-downloader@1.1.4", "", { "dependencies": { "commander": "^14.0.3", "csv-parse": "^6.1.0", "e621": "^3.2.1" }, "optionalDependencies": { "debug": "^4.4.1", "persistent-debug": "^1.0.1" }, "bin": { "e621-export-downloader": "dist/lib/cli.js" } }, "sha512-EjnbUFxzjN5riVEqizMn4eixuVL3jY/2rXpY8HoX74A6tbfK53Bgv3G8XkybTDVZgf3fLFhQiwSoIPid+a3ebQ=="],
 
-    "e621stream": ["e621stream@0.0.0", "", {}, "sha512-fBQeXrN/NJZ0RFO9hgmPL1yfH2U8PzdhM9AbWizLCmauizIbfkqIW1YlIigfhrYF8AVi+EZoYl2C7Fz88o6hYg=="],
+    "e621stream": ["e621stream@0.0.2", "", {}, "sha512-cl+w7GYPfA89c1DsFmazhSvP7eh72RXADIPHNIbHd3b5DIijmx+kT/yjXafpekeb6Y/chiJlvqDVDxjleWrl9g=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.334", "", {}, "sha512-mgjZAz7Jyx1SRCwEpy9wefDS7GvNPazLthHg8eQMJ76wBdGQQDW33TCrUTvQ4wzpmOrv2zrFoD3oNufMdyMpog=="],
 
