@@ -30,7 +30,7 @@ interface Mentionable {
 const MENTION = /donovan(_| )?dmc/i;
 export const isMention = (input: Pick<Mentionable, "body">) => MENTION.test(input.body);
 
-async function getAvatar(userID: number) {
+export async function getAvatar(userID: number) {
     const user = await RequestQueue.add(() => e621.users.get(userID));
     if (!user?.avatar_id) {
         return null;

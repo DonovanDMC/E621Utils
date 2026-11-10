@@ -6,5 +6,6 @@
   "tagsChannel": "",
   "mentionsChannel": "",
   "milestonesChannel": "",
-  "logsChannel": ""
+  "logsChannel": "",
+  "dmailsChannel": ""
 }

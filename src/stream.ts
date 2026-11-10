@@ -1,4 +1,5 @@
 import discordCDNParams, { fixExpiredSources } from "./discord-cdn-params.js";
+import { dmailsEnabled, handleDMail } from "./dmails.js";
 import type { HandlerPost, PostHandler } from "./handler.js";
 import logger from "./logger.js";
 import { handleMention, isMention } from "./mentions.js";
@@ -112,7 +113,7 @@ export async function startStream() {
         client:        "E621Utils",
         // STREAM_CURSOR can be an event id or a ms timestamp, for replaying by hand
         cursor:        process.env.STREAM_CURSOR ?? cursor ?? undefined,
-        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create"]
+        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create", ...(dmailsEnabled ? ["dmail.create"] : [])]
     });
 
     stream.on("ready", ready => {
@@ -130,6 +131,8 @@ export async function startStream() {
     stream.on("blip.create", event => onMention(event.id, "blip", event.data));
     stream.on("comment.create", event => onMention(event.id, "comment", event.data));
     stream.on("forum_post.create", event => onMention(event.id, "forumPost", event.data));
+    // private events aren't part of the cursor, the stream keeps track of which dmails it's sent itself
+    stream.on("dmail.create", event => void handleDMail(event.data).catch(err => logger.error(`[stream] Failed to send dmail ${event.data.id}:`, err)));
 
     // discord urls are rechecked after they expire
     setInterval(() => {
