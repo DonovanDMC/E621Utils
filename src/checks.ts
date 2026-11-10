@@ -403,30 +403,45 @@ async function loadSet(shortname: string) {
     return new Set(set.post_ids);
 }
 
-/** replaces the local copy of a set, and returns the posts that were added or removed */
-async function refreshSet(name: string) {
-    const ids = await loadSet(name);
-    // what the set was last time it was saved, so changes from while this wasn't running are caught too
-    const old = sets.get(name) ?? new Set(state().sets?.[name] ?? ids);
-    const changed = [...ids].filter(id => !old.has(id)).concat([...old].filter(id => !ids.has(id)));
-    sets.set(name, ids);
-    if (changed.length !== 0 || state().sets?.[name] === undefined) {
-        (state().sets ??= {})[name] = [...ids];
-        await saveState();
+/** loads the current sets into memory, so the checks use them */
+async function loadSets(names: Array<string>) {
+    for (const name of names) {
+        sets.set(name, await loadSet(name));
     }
-    return changed;
+}
+
+/** one post failing shouldn't stop the rest, it's returned so whatever it was part of can be tried again */
+async function recheckAll(ids: Iterable<number>) {
+    let ok = true;
+    for (const id of ids) {
+        await recheckPost(id).catch(err => {
+            ok = false;
+            logger.error(`[checks] Tag check failed on post ${id}:`, err);
+        });
+    }
+    return ok;
+}
+
+/**
+ * Rechecks posts that were added to or removed from the sets since they were last saved, including while this wasn't running.
+ * A set's saved copy is only updated once all of its changes were rechecked, so anything that failed is tried again next time.
+ */
+async function syncSets(names: Array<string>) {
+    for (const name of names) {
+        const ids = sets.get(name)!, saved = state().sets?.[name];
+        // the first time there's nothing to compare against, the backfill covers what's already in them
+        const old = saved === undefined ? ids : new Set(saved);
+        const changed = [...ids].filter(id => !old.has(id)).concat([...old].filter(id => !ids.has(id)));
+        if (await recheckAll(changed) && (changed.length !== 0 || saved === undefined)) {
+            (state().sets ??= {})[name] = [...ids];
+            await saveState();
+        }
+    }
 }
 
 async function refreshSets(names: Array<string>) {
-    const changed = new Set<number>();
-    for (const name of names) {
-        for (const id of await refreshSet(name)) {
-            changed.add(id);
-        }
-    }
-    for (const id of changed) {
-        await recheckPost(id);
-    }
+    await loadSets(names);
+    await syncSets(names);
 }
 
 /** a set event only says a set changed, it's reloaded since replayed events can be older than what's already known */
@@ -506,18 +521,11 @@ export default async function runChecks() {
 
 /** MySaves doesn't have a stream, so reviews are polled */
 async function refreshReviews() {
-    const ids = await getReviews();
-    // what was saved last time, so reviews added or removed while this wasn't running are caught too. the first time, they're all new
-    const old = reviews ?? new Set(state().reviews ?? []);
-    const changed = [...ids].filter(id => !old.has(id)).concat([...old].filter(id => !ids.has(id)));
-    reviews = ids;
-    if (changed.length !== 0 || state().reviews === undefined) {
-        state().reviews = [...ids];
-        await saveState();
-    }
-    for (const id of changed) {
-        await recheckPost(id);
-    }
+    reviews = await getReviews();
+    // compared against the cache rather than the last list, so anything that failed or was interrupted is picked up again next time
+    const added = [...reviews].filter(id => !tracked.get(id)?.tags.includes(REVIEW));
+    const removed = [...tracked.values()].filter(e => e.tags.includes(REVIEW) && !reviews!.has(e.post)).map(e => e.post);
+    await recheckAll([...added, ...removed]);
 }
 
 const SET_POLL_MS = 5 * 60 * 1000, REVIEW_POLL_MS = 5 * 60 * 1000;
@@ -530,21 +538,16 @@ export async function initChecks() {
     await loadState();
     tracked = new Map((await readCache()).posts.map(entry => [entry.post, entry]));
     // kept across retries, sets that loaded before a failure already have their new copy
-    const changed: Array<number> = [];
     for (let attempt = 1; ; attempt++) {
         try {
-            for (const name of setNames) {
-                changed.push(...await refreshSet(name));
-            }
+            await loadSets(setNames);
             break;
         } catch (err) {
             logger.error(`[checks] Failed to load sets (attempt ${attempt}), retrying in 30 seconds:`, err);
             await new Promise(resolve => setTimeout(resolve, 30_000));
         }
     }
-    for (const id of new Set(changed)) {
-        void runQueued(async() => recheckPost(id)).catch(err => logger.error(`[checks] Tag check failed on post ${id}:`, err));
-    }
+    void runQueued(async() => syncSets(setNames)).catch(err => logger.error("[checks] Failed to sync sets:", err));
 
     if (mysavesEnabled) {
         // not waited on, MySaves being down shouldn't hold up the stream
