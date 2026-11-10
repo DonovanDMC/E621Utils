@@ -13,7 +13,10 @@
     "dev": "npm run down && npm run up:dev",
     "dev:build": "npm run down && npm run up",
     "update": "git pull && git submodule update --init --recursive --remote && docker compose pull && npm run down && npm run up:d",
-    "manual": "DEBUG=* bun src/discord-cdn-params.ts && DEBUG=* bun src/ratios.ts && DEBUG=* bun src/nuke-tags.ts"
+    "manual": "DEBUG=* bun src/discord-cdn-params.ts && DEBUG=* bun src/ratios.ts && DEBUG=* bun src/nuke-tags.ts",
+    "aibur": "bun src/most-voted-aibur.ts",
+    "aliases": "bun src/most-voted-aliases.ts",
+    "implications": "bun src/most-voted-implications.ts"
   },
   "repository": {
     "type": "git",
