@@ -1,9 +1,11 @@
-import ExportsClient from "./exports.js";
-import Progress from "./progress.js";
-import { safeRemoveTags } from "./safeTagRemoval.js";
-import { isDirectRun } from "./util.js";
+import { e621 } from "./clients.js";
+import { allTags, type HandlerPost, type PostHandler } from "./handler.js";
+import logger from "./logger.js";
+import RequestQueue from "./queue.js";
+import { removeTagsOnce } from "./safeTagRemoval.js";
+import { DAY } from "./util.js";
 
-const tags = [
+const tags = new Set([
     "invalid_tag",
     "colored_muzzle",
     "iridescent_muzzle",
@@ -25,39 +27,49 @@ const tags = [
     "grey_muzzle",
     "cream_muzzle",
     "black_muzzle"
-];
+]);
 
-let i = 0;
-export default async function runNuke() {
-    const progress = await Progress.load("nuke-tags", tags);
-    if (progress.finished) {
-        return;
+// anything used this much should be looked at by hand, invalid_tag is always removed
+const MAX_POSTS = 100;
+const noLimit = new Set(["invalid_tag"]);
+
+const matching = (post: HandlerPost) => allTags(post).filter(tag => tags.has(tag));
+
+const lookups = new Map<string, { skip: boolean; time: number; }>();
+async function isTooBig(tag: string) {
+    if (noLimit.has(tag)) {
+        return false;
     }
 
-    for await (const [record] of ExportsClient.getDeferredReader("posts")) {
-        if (++i % 25000 === 0) {
-            console.log(i);
-        }
+    const cached = lookups.get(tag);
+    if (cached && Date.now() - cached.time < DAY) {
+        return cached.skip;
+    }
 
-        if (progress.shouldSkip(record.id)) {
-            continue;
-        }
+    const [info] = await RequestQueue.add(() => e621.tags.search({ name: tag }));
+    const skip = (info?.post_count ?? 0) > MAX_POSTS;
+    // only logged when it's looked up, so it isn't repeated for every post
+    if (skip) {
+        logger.warn(`[nuke-tags] Skipping ${tag} for the next day, it has ${info!.post_count} posts`);
+    }
+    lookups.set(tag, { skip, time: Date.now() });
+    return skip;
+}
 
-        const includedTags = tags.filter(tag => record.tags.includes(tag));
-        if (includedTags.length !== 0) {
-            if (await safeRemoveTags(record.id, includedTags)) {
-                for (const tag of includedTags) {
-                    console.log("Removed %s from %d", tag, record.id);
-                }
+const nukeTags: PostHandler = {
+    name:  "nuke-tags",
+    check: post => matching(post).length !== 0,
+    async run(post) {
+        const remove: Array<string> = [];
+        for (const tag of matching(post)) {
+            if (!await isTooBig(tag)) {
+                remove.push(tag);
             }
         }
 
-        await progress.update(record.id, includedTags.length !== 0);
+        for (const tag of await removeTagsOnce(post.id, remove)) {
+            logger.info(`[nuke-tags] Removed ${tag} from https://e621.net/posts/${post.id}`);
+        }
     }
-
-    await progress.finish();
-}
-
-if (isDirectRun(import.meta.url)) {
-    await runNuke();
-}
+};
+export default nukeTags;

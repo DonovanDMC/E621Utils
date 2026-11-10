@@ -1,5 +1,7 @@
 import { e621 } from "./clients.js";
+import logger, { flush } from "./logger.js";
 import RequestQueue from "./queue.js";
+import { DRY_RUN, markTagsRemoved, wasTagRemoved } from "./state.js";
 import type { Post } from "e621";
 
 function flattenTags(tags: Post["tags"]): Array<string> {
@@ -45,23 +47,28 @@ export async function safeRemoveTags(id: number, tagsToRemove: Array<string>): P
 
     const live = await RequestQueue.add(() => e621.posts.get(id));
     if (!live) {
-        console.log(`[safeRemoveTags] Skipping post ${id}: it no longer exists`);
+        logger.info(`[safeRemoveTags] Skipping post ${id}: it no longer exists`);
         return false;
     }
 
     const before = flattenTags(live.tags);
-    const toRemove = tagsToRemove.filter(tag => before.includes(tag));
+    // locked tags can't be removed anyway, and someone locked them for a reason
+    const toRemove = tagsToRemove.filter(tag => before.includes(tag) && !live.locked_tags?.includes(tag));
     if (toRemove.length === 0) {
         return false;
     }
 
     if (toRemove.length >= before.length) {
-        console.error(`[safeRemoveTags] Skipping post ${id}: refusing to remove ${toRemove.length} of its ${before.length} total tag(s) (${toRemove.join(", ")})`);
+        logger.warn(`[safeRemoveTags] Skipping https://e621.net/posts/${id}: refusing to remove ${toRemove.length} of its ${before.length} total tag(s) (${toRemove.join(", ")})`);
         return false;
     }
 
     const expectedAfter = before.filter(tag => !toRemove.includes(tag));
     const diff = toRemove.map(tag => `-${tag}`).join(" ");
+    if (DRY_RUN) {
+        logger.info(`[safeRemoveTags] [dry run] Would remove "${toRemove.join(" ")}" from ${id}`);
+        return true;
+    }
 
     const updated = await RequestQueue.add(() => e621.posts.update(id, {
         tag_string_diff: diff,
@@ -79,30 +86,51 @@ export async function safeRemoveTags(id: number, tagsToRemove: Array<string>): P
     }
 
     if (stillPresent.length !== 0 || missingExpected.length !== 0 || unexpectedExtra.length !== 0) {
-        console.error("=".repeat(70));
-        console.error(`[safeRemoveTags] SANITY CHECK FAILED updating post ${id} - reverting immediately`);
-        console.error("Attempted to remove:", toRemove);
-        console.error("Before:             ", before);
-        console.error("Expected after:     ", expectedAfter);
-        console.error("Actual after:       ", after);
-        if (stillPresent.length !== 0) console.error("Should have been removed but weren't:", stillPresent);
-        if (missingExpected.length !== 0) console.error("Removed unexpectedly:", missingExpected);
-        if (unexpectedExtra.length !== 0) console.error("Present unexpectedly:", unexpectedExtra);
-        console.error("=".repeat(70));
+        const details = [
+            `[safeRemoveTags] SANITY CHECK FAILED updating https://e621.net/posts/${id} - reverting immediately`,
+            `Attempted to remove: ${toRemove.join(" ")}`,
+            stillPresent.length === 0 ? null : `Should have been removed but weren't: ${stillPresent.join(" ")}`,
+            missingExpected.length === 0 ? null : `Removed unexpectedly: ${missingExpected.join(" ")}`,
+            unexpectedExtra.length === 0 ? null : `Present unexpectedly: ${unexpectedExtra.join(" ")}`,
+            `Before: ${before.join(" ")}`,
+            `Expected after: ${expectedAfter.join(" ")}`,
+            `Actual after: ${after.join(" ")}`
+        ];
+        logger.error(details.filter(Boolean).join("\n"));
 
         try {
             await RequestQueue.add(() => e621.posts.update(id, {
                 tag_string:  before.join(" "),
                 edit_reason: "automatic revert: sanity check failed after tag removal"
             }));
-            console.error(`[safeRemoveTags] Reverted post ${id} to its original tags.`);
+            logger.error(`[safeRemoveTags] Reverted https://e621.net/posts/${id} to its original tags.`);
         } catch (err) {
-            console.error(`[safeRemoveTags] FAILED TO REVERT post ${id}! Manual intervention required. Its tags before this script ran were:`, before);
-            console.error(err);
+            logger.error(`[safeRemoveTags] FAILED TO REVERT https://e621.net/posts/${id}! Manual intervention required. Its tags before this script ran were: ${before.join(" ")}\n`, err);
         }
 
+        // make sure this gets out before exiting
+        await flush();
         process.exit(1);
     }
 
     return true;
+}
+
+/**
+ * {@link safeRemoveTags}, but each tag is only ever removed from a post once. If someone
+ * puts it back after that, it's left alone instead of fighting them over it.
+ */
+export async function removeTagsOnce(id: number, tags: Array<string>): Promise<Array<string>> {
+    const toRemove: Array<string> = [];
+    for (const tag of tags) {
+        if (!toRemove.includes(tag) && !wasTagRemoved(id, tag)) {
+            toRemove.push(tag);
+        }
+    }
+    if (toRemove.length === 0) {
+        return [];
+    }
+
+    await markTagsRemoved(id, toRemove);
+    return await safeRemoveTags(id, toRemove) ? toRemove : [];
 }

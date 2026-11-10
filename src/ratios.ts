@@ -1,7 +1,9 @@
-import ExportsClient from "./exports.js";
-import Progress from "./progress.js";
-import { safeRemoveTags } from "./safeTagRemoval.js";
-import { isDirectRun } from "./util.js";
+import { e621 } from "./clients.js";
+import { allTags, type HandlerPost, type PostHandler } from "./handler.js";
+import logger from "./logger.js";
+import RequestQueue from "./queue.js";
+import { removeTagsOnce } from "./safeTagRemoval.js";
+import { DAY } from "./util.js";
 
 const whitelisted = new Set([
     "1:1",
@@ -12,59 +14,52 @@ const whitelisted = new Set([
     "3:4", "3:5", "4:5", "4:7", "5:6",
     "5:8", "9:14", "9:16", "135:256", "6:13"
 ]);
+// anything used this much is probably intentional, and should be looked at by hand
+const MAX_POSTS = 25;
 
-export default async function runRatios() {
-    const r = /^\d+:\d+$/;
-    const aliased: Record<string, string> = {};
-    for await (const [record] of ExportsClient.getDeferredReader("tag_aliases")) {
-        if (r.test(record.antecedent_name)) {
-            aliased[record.antecedent_name] = record.consequent_name;
-        }
+const ratio = /^\d+:\d+$/;
+const candidates = (post: HandlerPost) => allTags(post).filter(tag => ratio.test(tag) && !whitelisted.has(tag));
 
-        if (r.test(record.consequent_name)) {
-            aliased[record.consequent_name] = record.antecedent_name;
+const lookups = new Map<string, { remove: boolean; time: number; }>();
+async function shouldRemove(tag: string) {
+    const cached = lookups.get(tag);
+    if (cached && Date.now() - cached.time < DAY) {
+        return cached.remove;
+    }
+
+    let remove = true;
+    const aliases = [
+        ...await RequestQueue.add(() => e621.tagAliases.search({ antecedent_name: tag, status: "active" })),
+        ...await RequestQueue.add(() => e621.tagAliases.search({ consequent_name: tag, status: "active" }))
+    ];
+    if (aliases.some(a => whitelisted.has(a.antecedent_name) || whitelisted.has(a.consequent_name))) {
+        remove = false;
+    } else {
+        const [info] = await RequestQueue.add(() => e621.tags.search({ name: tag }));
+        if (info && info.post_count > MAX_POSTS) {
+            logger.info(`[ratios] Skipping ${tag} (${info.post_count})`);
+            remove = false;
         }
     }
 
-    const totals: Record<string, number> = {};
-    const list: Array<string> = [];
-    for await (const [record] of ExportsClient.getDeferredReader("tags")) {
-        if (record.post_count > 0 && r.test(record.name) && !whitelisted.has(record.name) && !whitelisted.has(aliased[record.name]!)) {
-            if (record.post_count > 25) {
-                console.log(`Skipping ${record.name} (${record.post_count})`);
-                return;
-            }
-            console.log(`Found ${record.name} (${record.post_count})`);
-            list.push(record.name);
-            totals[record.name] = record.post_count;
-        }
-    }
+    lookups.set(tag, { remove, time: Date.now() });
+    return remove;
+}
 
-    const progress = await Progress.load("ratios", list);
-    if (progress.finished) {
-        return;
-    }
-
-    for await (const [record] of ExportsClient.getDeferredReader("posts")) {
-        if (progress.shouldSkip(record.id)) {
-            continue;
-        }
-
-        const tags = list.filter(tag => record.tags.includes(tag));
-        if (tags.length !== 0) {
-            if (await safeRemoveTags(record.id, tags)) {
-                for (const tag of tags) {
-                    console.log("Removed %s (%d) from %d", tag, --totals[tag]!, record.id);
-                }
+const ratios: PostHandler = {
+    name:  "ratios",
+    check: post => candidates(post).length !== 0,
+    async run(post) {
+        const tags: Array<string> = [];
+        for (const tag of candidates(post)) {
+            if (await shouldRemove(tag)) {
+                tags.push(tag);
             }
         }
 
-        await progress.update(record.id, tags.length !== 0);
+        for (const tag of await removeTagsOnce(post.id, tags)) {
+            logger.info(`[ratios] Removed ${tag} from https://e621.net/posts/${post.id}`);
+        }
     }
-
-    await progress.finish();
-}
-
-if (isDirectRun(import.meta.url)) {
-    await runRatios();
-}
+};
+export default ratios;

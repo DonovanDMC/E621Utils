@@ -1,11 +1,12 @@
 import runSources from "./sources.js";
+import { runBackfill } from "./backfill.js";
 import runChecks from "./checks.js";
 import { discord } from "./clients.js";
+import logger, { flush } from "./logger.js";
 import runMentions from "./mentions.js";
-import runRatios from "./ratios.js";
 import { runMilestones } from "./milestones.js";
+import { startStream } from "./stream.js";
 import statusServer from "@uwu-codes/status-server";
-import { spawn } from "node:child_process";
 
 const running: Array<string> = [];
 
@@ -21,26 +22,17 @@ async function runIf(type: string, func: (...args: Array<any>) => any) {
     running.splice(running.indexOf(type), 1);
 }
 
-// same as `bun run manual`, each script in its own process
-const manualScripts = ["discord-cdn-params", "ratios", "nuke-tags"];
-async function runManual() {
-    for (const script of manualScripts) {
-        const code = await new Promise<number | null>(resolve => {
-            spawn("bun", [`src/${script}.ts`], { env: { ...process.env, DEBUG: "*" }, stdio: "inherit" })
-                .once("error", err => {
-                    console.error(`Failed to start ${script}:`, err);
-                    resolve(null);
-                })
-                .once("exit", resolve);
-        });
-        if (code !== 0) {
-            console.error(`${script} exited with code ${code}, skipping the rest`);
-            return;
-        }
-    }
-}
+process.on("unhandledRejection", err => logger.error("Unhandled rejection:", err));
+process.once("uncaughtException", async err => {
+    logger.error("Uncaught exception, exiting:", err);
+    await flush();
+    process.exit(1);
+});
 
+logger.info("Starting");
 await runMilestones();
+await startStream();
+void runIf("backfill", runBackfill);
 setInterval(async() => {
     const d = new Date();
 
@@ -48,8 +40,9 @@ setInterval(async() => {
         await runIf("mentions", runMentions);
     }
 
-    if (d.getHours() === 5 && d.getMinutes() === 0 && d.getSeconds() === 0) {
-        await runIf("manual", runManual);
+    // waits for a new enough export, then does nothing once it's done
+    if (d.getMinutes() === 0 && d.getSeconds() === 0) {
+        await runIf("backfill", runBackfill);
     }
 }, 1000);
 

@@ -1,133 +1,124 @@
-import { e621 } from "./clients.js";
-import ExportsClient from "./exports.js";
-import Progress from "./progress.js";
-import RequestQueue from "./queue.js";
-import { isDirectRun } from "./util.js";
+import { type HandlerPost, type PostHandler, replaceSourcesOnce } from "./handler.js";
+import logger from "./logger.js";
+import { addPendingSource, saveState, takeExpiredSources, wasSourceEdited } from "./state.js";
 
-let i = 0;
-export default async function runDiscordCDNParams() {
-    const progress = await Progress.load("discord-cdn-params");
-    if (progress.finished) {
+const CDN = "https://cdn.discordapp.com", MEDIA = "https://media.discordapp.net";
+const expiryParams = new Set(["ex", "hm", "is"]);
+// wait a bit past the expiry, so the url has definitely stopped working before it's marked dead
+const GRACE_MS = 10 * 60 * 1000;
+
+function isDiscord(source: string) {
+    return source.startsWith(CDN) || source.startsWith(MEDIA);
+}
+
+function getParams(source: string) {
+    try {
+        return new URL(source).searchParams;
+    } catch {
+        return new URLSearchParams();
+    }
+}
+
+const onlyExpiryParams = (params: URLSearchParams) => Array.from(params.keys()).every(p => expiryParams.has(p));
+
+/** when a signed discord url stops working, in ms */
+export function getExpiry(source: string) {
+    const ex = parseInt(getParams(source).get("ex") ?? "", 16);
+    return isNaN(ex) ? null : ex * 1000;
+}
+
+/**
+ * What a discord source should be replaced with right now, or null if it's fine for now.
+ * media.discordapp.net links are swapped for cdn.discordapp.com, and anything unsigned or expired
+ * is marked dead (`-url`) with the expiry params stripped.
+ */
+export function fixSource(source: string, now = Date.now()) {
+    if (!isDiscord(source)) {
+        return null;
+    }
+
+    const params = getParams(source);
+    let fixed = source;
+    if (fixed.startsWith(MEDIA) && onlyExpiryParams(params)) {
+        fixed = fixed.replace(MEDIA, CDN);
+    }
+
+    if (!fixed.includes("?")) {
+        return `-${fixed}`;
+    }
+
+    const expires = getExpiry(fixed);
+    if (expires === null || expires < now) {
+        const query = new URLSearchParams(Array.from(params).filter(([key]) => !expiryParams.has(key))).toString();
+        return `-${fixed.split("?")[0]}${query.length === 0 ? "" : `?${query}`}`;
+    }
+
+    return fixed === source ? null : fixed;
+}
+
+async function fix(post: number, sources: Array<string>, now = Date.now()) {
+    const replacements = new Map<string, string>();
+    for (const source of sources) {
+        const fixed = fixSource(source, now);
+        if (fixed !== null) {
+            replacements.set(source, fixed);
+        }
+    }
+    if (replacements.size !== 0) {
+        await replaceSourcesOnce(post, replacements);
+    }
+}
+
+const discordCDNParams: PostHandler = {
+    name:  "discord-cdn-params",
+    check: post => post.sources.some(source => isDiscord(source) && !wasSourceEdited(post.id, source)),
+    async run(post: HandlerPost) {
+        const now = Date.now(), fixNow: Array<string> = [];
+        let added = false;
+        for (const source of post.sources) {
+            if (!isDiscord(source) || wasSourceEdited(post.id, source)) {
+                continue;
+            }
+
+            if (fixSource(source, now) !== null) {
+                fixNow.push(source);
+                continue;
+            }
+
+            // still valid, so it gets marked dead once it expires
+            const expires = getExpiry(source);
+            if (expires !== null && addPendingSource(post.id, source, expires)) {
+                added = true;
+            }
+        }
+
+        if (added) {
+            await saveState();
+        }
+        await fix(post.id, fixNow, now);
+    }
+};
+export default discordCDNParams;
+
+/** fixes every tracked url that has expired */
+export async function fixExpiredSources() {
+    const now = Date.now();
+    const expired = takeExpiredSources(now - GRACE_MS);
+    if (expired.length === 0) {
         return;
     }
 
-    const d = Date.now();
-    for await (const [record] of ExportsClient.getDeferredReader("posts")) {
-        if (++i % 25000 === 0) {
-            console.log(i);
-        }
-
-        if (progress.shouldSkip(record.id)) {
-            continue;
-        }
-
-        if (record.change_seq < 59_000_000) {
-            await progress.update(record.id);
-            continue;
-        }
-
-        let changes = false;
-        for (const source of record.sources) {
-            if (source.startsWith("https://media.discordapp.net")) {
-                changes = true;
-                break;
+    await saveState();
+    const byPost = Map.groupBy(expired, p => p.post);
+    for (const [post, entries] of byPost) {
+        try {
+            await fix(post, entries.map(e => e.source), now);
+        } catch (err) {
+            logger.error(`[discord-cdn-params] Failed to fix post ${post}, retrying later:`, err);
+            for (const entry of entries) {
+                addPendingSource(entry.post, entry.source, entry.expires);
             }
-            if (source.startsWith("https://cdn.discordapp.com")) {
-                if (!source.includes("?")) {
-                    changes = true;
-                    break;
-                }
-
-                try {
-                    const url = new URL(source);
-                    const expire = parseInt(url.searchParams.get("ex")!, 16) * 1000;
-                    if (!isNaN(expire) && expire < d) {
-                        changes = true;
-                        break;
-                    }
-                } catch {}
-            }
+            await saveState();
         }
-
-        if (!changes) {
-            await progress.update(record.id);
-            continue;
-        }
-
-        const post = (await RequestQueue.add(async() => e621.posts.get(record.id)))!;
-        const sources = Array.from(post.sources);
-        const expiryParams = new Set(["ex", "hm", "is"]);
-        const onlyExpiryParams = (params: URLSearchParams) => Array.from(params.keys()).every(p => expiryParams.has(p));
-
-        for (let source of post.sources) {
-            let params = new URLSearchParams();
-            try {
-                params = new URL(source).searchParams;
-            } catch {
-                // ignore
-            }
-            // ex, hm, is
-            if (source.startsWith("https://media.discordapp.net") && onlyExpiryParams(params)) {
-                const original = source;
-                source = source.replace("https://media.discordapp.net", "https://cdn.discordapp.com");
-                sources.splice(sources.indexOf(original), 1, source);
-            }
-            if (source.startsWith("https://cdn.discordapp.com") || source.startsWith("https://media.discordapp.net")) {
-                if (!source.includes("?")) {
-                    sources.splice(sources.indexOf(source), 1, `-${source}`);
-                    continue;
-                }
-
-                try {
-                    const expire = parseInt(params.get("ex")!, 16);
-                    if (isNaN(expire) || expire < d) {
-                        let query = "";
-                        if (!onlyExpiryParams(params)) {
-                            for (const param of Array.from(params.keys())) {
-                                if (expiryParams.has(param)) {
-                                    continue;
-                                }
-
-                                query += `&${param}=${params.get(param)!}`;
-                            }
-                        }
-
-                        if (query.length !== 0) {
-                            query = `?${query.slice(1)}`;
-                        }
-
-                        sources.splice(sources.indexOf(source), 1, `-${source.split("?")[0]}${query}`);
-                    }
-                } catch {}
-            }
-        }
-
-        if (JSON.stringify(sources) !== JSON.stringify(post.sources)) {
-            await RequestQueue.add(async() => {
-                const add: Array<string> = [], remove: Array<string> = [];
-                for (const source of sources) {
-                    if (!post.sources.includes(source)) {
-                        add.push(source);
-                    }
-                }
-                for (const source of post.sources) {
-                    if (!sources.includes(source)) {
-                        remove.push(source);
-                    }
-                }
-                console.log(`https://e621.net/posts/${post.id}`, "Add:", add, "Remove:", remove);
-                await post.update({
-                    source: sources.join("\n")
-                });
-            });
-        }
-
-        await progress.update(record.id, true);
     }
-
-    await progress.finish();
-}
-
-if (isDirectRun(import.meta.url)) {
-    await runDiscordCDNParams();
 }

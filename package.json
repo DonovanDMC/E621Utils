@@ -13,7 +13,7 @@
     "dev": "npm run down && npm run up:dev",
     "dev:build": "npm run down && npm run up",
     "update": "git pull && git submodule update --init --recursive --remote && docker compose pull && npm run down && npm run up:d",
-    "manual": "DEBUG=* bun src/discord-cdn-params.ts && DEBUG=* bun src/ratios.ts && DEBUG=* bun src/nuke-tags.ts",
+    "stream": "bun src/stream.ts",
     "aibur": "bun src/most-voted-aibur.ts",
     "aliases": "bun src/most-voted-aliases.ts",
     "implications": "bun src/most-voted-implications.ts"
@@ -44,6 +44,7 @@
     "chunk": "^0.0.3",
     "e621": "^3.4.0",
     "e621-export-downloader": "^1.1.4",
+    "e621stream": "^0.0.0",
     "microjob": "^0.7.0",
     "oceanic.js": "^1.14.0"
   },

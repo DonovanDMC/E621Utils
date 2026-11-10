@@ -5,5 +5,7 @@
   "guild": "",
   "tagsChannel": "",
   "mentionsChannel": "",
-  "milestonesChannel": ""
+  "milestonesChannel": "",
+  "logWebhook": "",
+  "discordWebhookBaseURL": ""
 }
