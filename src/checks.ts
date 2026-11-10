@@ -238,6 +238,24 @@ function getMessageContent(): CreateMessageOptions | EditMessageOptions {
     };
 }
 
+// how long nothing has to change for before the status message is updated, so bulk changes only update it once at the end
+const STATUS_DELAY_MS = 15_000;
+let statusTimer: NodeJS.Timeout | null = null, statusRecreate = false;
+// one at a time, two overlapping recreates could both send a new message
+let statusUpdate = Promise.resolve();
+function scheduleStatus(recreate: boolean) {
+    statusRecreate ||= recreate;
+    if (statusTimer !== null) {
+        clearTimeout(statusTimer);
+    }
+    statusTimer = setTimeout(() => {
+        statusTimer = null;
+        const r = statusRecreate;
+        statusRecreate = false;
+        statusUpdate = statusUpdate.then(() => updateMessage(r)).catch(err => logger.error("[checks] Failed to update the status message:", err));
+    }, STATUS_DELAY_MS);
+}
+
 /** `recreate` moves the status message to the bottom of the channel, under anything just sent */
 async function updateMessage(recreate: boolean) {
     if (DRY_RUN) {
@@ -364,7 +382,7 @@ export function needsTagCheck(post: CheckPost) {
 export async function recheckPost(id: number) {
     const post = await RequestQueue.add(() => e621.posts.get(id, { v2: true, mode: "extended" }));
     if (await apply(id, evaluate(post), post) !== null) {
-        await updateMessage(true);
+        scheduleStatus(true);
     }
 }
 
@@ -480,7 +498,7 @@ export default async function runChecks() {
         if (added !== 0 || removed !== 0) {
             logger.info(`[checks] Full check added ${added} and removed ${removed} posts`);
         }
-        await updateMessage(added !== 0 || removed !== 0);
+        scheduleStatus(added !== 0 || removed !== 0);
     } finally {
         running = false;
     }
