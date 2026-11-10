@@ -1,6 +1,7 @@
 import { e621, discord } from "./clients.js";
 import { type CacheEntry, readCache, writeCache } from "./cache.js";
 import logger from "./logger.js";
+import { getReviews, mysavesEnabled } from "./mysaves.js";
 import RequestQueue from "./queue.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { runQueued } from "./stream.js";
@@ -75,23 +76,34 @@ function matches(post: CheckPost, tags: Set<string>, terms: Array<Term>) {
 }
 
 /** what a post is currently found for, the same strings the searches would give */
+const REVIEW = "MySaves review";
+// null until it's first loaded, posts keep whatever they had until then so nothing is removed just because MySaves was down
+let reviews: Set<number> | null = null;
+const isReviewed = (id: number) => reviews === null ? tracked.get(id)?.tags.includes(REVIEW) ?? false : reviews.has(id);
+
 function evaluate(post: CheckPost | null) {
-    // deleted posts don't show up in searches
-    if (post === null || post.flags.deleted) {
+    if (post === null) {
         return [];
     }
 
-    const tags = new Set(Object.values(post.tags).flat());
     const found: Array<string> = [];
-    for (const { base, groups, terms } of configs) {
-        if (!matches(post, tags, terms)) {
-            continue;
+    // deleted posts don't show up in searches
+    if (!post.flags.deleted) {
+        const tags = new Set(Object.values(post.tags).flat());
+        for (const { base, groups, terms } of configs) {
+            if (!matches(post, tags, terms)) {
+                continue;
+            }
+            if (groups === null) {
+                found.push(base);
+            } else {
+                found.push(...groups.filter(tag => tags.has(tag)).map(tag => `${tag} ${base}`));
+            }
         }
-        if (groups === null) {
-            found.push(base);
-        } else {
-            found.push(...groups.filter(tag => tags.has(tag)).map(tag => `${tag} ${base}`));
-        }
+    }
+    // reviews are flagged by hand, so they're kept even if the post was deleted
+    if (isReviewed(post.id)) {
+        found.push(REVIEW);
     }
     return found;
 }
@@ -192,7 +204,7 @@ function getMessageContent(): CreateMessageOptions | EditMessageOptions {
                 title:       "Status",
                 description: `Posts are checked as they're edited, last updated <t:${Math.floor(Date.now() / 1000)}:R>.\n${resync}`,
                 footer:      {
-                    text: `Total Cached Posts: ${tracked.size}`
+                    text: `Total Cached Posts: ${tracked.size}${mysavesEnabled ? ` (${[...tracked.values()].filter(e => e.tags.includes(REVIEW)).length} for review)` : ""}`
                 },
                 color:     tracked.size === 0 ? GREEN : (tracked.size <= 5 ? YELLOW : RED),
                 timestamp: new Date().toISOString()
@@ -455,7 +467,8 @@ export default async function runChecks() {
             const post = allPosts.find(p => p.id === id) ?? null;
             // stream events are checked locally, so that's what's used here too, or the two would keep undoing each other
             const local = evaluate(post);
-            if (!sameTags(local, found.get(id) ?? [])) {
+            // searches don't know about reviews
+            if (!sameTags(local.filter(t => t !== REVIEW), found.get(id) ?? [])) {
                 logger.warn(`[checks] Search and the local check disagree on https://e621.net/posts/${id}, search: ${found.get(id)?.join(", ") || "nothing"}, local: ${local.join(", ") || "nothing"}`);
             }
             const op = await apply(id, local, post);
@@ -473,7 +486,23 @@ export default async function runChecks() {
     }
 }
 
-const SET_POLL_MS = 5 * 60 * 1000;
+/** MySaves doesn't have a stream, so reviews are polled */
+async function refreshReviews() {
+    const ids = await getReviews();
+    // what was saved last time, so reviews added or removed while this wasn't running are caught too. the first time, they're all new
+    const old = reviews ?? new Set(state().reviews ?? []);
+    const changed = [...ids].filter(id => !old.has(id)).concat([...old].filter(id => !ids.has(id)));
+    reviews = ids;
+    if (changed.length !== 0 || state().reviews === undefined) {
+        state().reviews = [...ids];
+        await saveState();
+    }
+    for (const id of changed) {
+        await recheckPost(id);
+    }
+}
+
+const SET_POLL_MS = 5 * 60 * 1000, REVIEW_POLL_MS = 5 * 60 * 1000;
 /** has to be done before the stream starts, set checks can't be right without knowing what's in the sets */
 export async function initChecks() {
     // dry runs leave the buttons to the real one
@@ -497,6 +526,13 @@ export async function initChecks() {
     }
     for (const id of new Set(changed)) {
         void runQueued(async() => recheckPost(id)).catch(err => logger.error(`[checks] Tag check failed on post ${id}:`, err));
+    }
+
+    if (mysavesEnabled) {
+        // not waited on, MySaves being down shouldn't hold up the stream
+        const refresh = () => void runQueued(refreshReviews).catch(err => logger.error("[checks] Failed to load MySaves reviews:", err));
+        refresh();
+        setInterval(refresh, REVIEW_POLL_MS);
     }
 
     // dry runs don't get the private set events, so they poll instead

@@ -7,5 +7,7 @@
   "mentionsChannel": "",
   "milestonesChannel": "",
   "logsChannel": "",
-  "dmailsChannel": ""
+  "dmailsChannel": "",
+  "mysavesURL": "https://saves.furry.cool",
+  "mysavesApiKey": ""
 }
