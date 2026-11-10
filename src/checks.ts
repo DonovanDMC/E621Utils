@@ -1,7 +1,7 @@
 import { e621, discord } from "./clients.js";
 import { type CacheEntry, readCache, writeCache } from "./cache.js";
 import logger from "./logger.js";
-import { getReviews, mysavesEnabled } from "./mysaves.js";
+import { getReviews, mysavesEnabled, removeReview } from "./mysaves.js";
 import RequestQueue from "./queue.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { runQueued } from "./stream.js";
@@ -176,17 +176,37 @@ async function onInteraction(interaction: AnyInteractionGateway) {
             }
 
             case "remove-post": {
-                if (!tracked.delete(Number(args[0]))) {
+                const id = Number(args[0]);
+                const entry = tracked.get(id);
+                if (entry === undefined) {
                     return interaction.createFollowup({
                         flags:   MessageFlags.EPHEMERAL,
                         content: "That post is not cached."
                     });
                 }
+
+                // otherwise the next review poll would just add it back
+                let unreviewed = false;
+                if (entry.tags.includes(REVIEW) && mysavesEnabled) {
+                    try {
+                        unreviewed = await removeReview(id);
+                    } catch (err) {
+                        logger.error(`[checks] Failed to remove https://e621.net/posts/${id} from review in MySaves:`, err);
+                        return interaction.createFollowup({
+                            flags:   MessageFlags.EPHEMERAL,
+                            content: "Failed to remove the post from review in MySaves, so it was left as is."
+                        });
+                    }
+                    reviews?.delete(id);
+                }
+
+                tracked.delete(id);
                 await saveTracked();
                 await interaction.message.delete();
+                scheduleStatus(false);
                 await interaction.createFollowup({
                     flags:   MessageFlags.EPHEMERAL,
-                    content: "Post removed."
+                    content: unreviewed ? "Post removed, and taken out of review in MySaves." : "Post removed."
                 });
                 break;
             }
