@@ -1,6 +1,7 @@
 import discordCDNParams, { fixExpiredSources } from "./discord-cdn-params.js";
 import type { HandlerPost, PostHandler } from "./handler.js";
 import logger from "./logger.js";
+import { handleMention, isMention } from "./mentions.js";
 import nukeTags from "./nuke-tags.js";
 import ratios from "./ratios.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
@@ -82,6 +83,15 @@ function onPost(id: string, post: HandlerPost) {
     enqueue(id, async() => runHandlers(post, matched));
 }
 
+function onMention(id: string, type: Parameters<typeof handleMention>[0], input: Parameters<typeof handleMention>[1]) {
+    if (!isMention(input)) {
+        skip(id);
+        return;
+    }
+
+    enqueue(id, async() => handleMention(type, input).catch(err => logger.error(`[stream] Failed to send the mention from ${type} ${input.id}:`, err)));
+}
+
 let stream: E621Stream | undefined;
 export async function startStream() {
     if (stream !== undefined) {
@@ -102,7 +112,7 @@ export async function startStream() {
         client:        "E621Utils",
         // STREAM_CURSOR can be an event id or a ms timestamp, for replaying by hand
         cursor:        process.env.STREAM_CURSOR ?? cursor ?? undefined,
-        subscriptions: ["post.create", "post.update"]
+        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create"]
     });
 
     stream.on("ready", ready => {
@@ -117,6 +127,9 @@ export async function startStream() {
     stream.on("error", err => logger.error("[stream] Error:", err));
     stream.on("post.create", event => onPost(event.id, event.data.post));
     stream.on("post.update", event => onPost(event.id, event.data.post));
+    stream.on("blip.create", event => onMention(event.id, "blip", event.data));
+    stream.on("comment.create", event => onMention(event.id, "comment", event.data));
+    stream.on("forum_post.create", event => onMention(event.id, "forumPost", event.data));
 
     // discord urls are rechecked after they expire
     setInterval(() => {

@@ -3,7 +3,6 @@ import { runBackfill } from "./backfill.js";
 import runChecks from "./checks.js";
 import { discord } from "./clients.js";
 import logger, { flush } from "./logger.js";
-import runMentions from "./mentions.js";
 import { runMilestones } from "./milestones.js";
 import { startStream } from "./stream.js";
 import statusServer from "@uwu-codes/status-server";
@@ -18,8 +17,14 @@ async function runIf(type: string, func: (...args: Array<any>) => any) {
     }
 
     running.push(type);
-    await func();
-    running.splice(running.indexOf(type), 1);
+    try {
+        await func();
+    } catch (err) {
+        logger.error(`${type} failed:`, err);
+    } finally {
+        // without this, one error would leave it "running" forever
+        running.splice(running.indexOf(type), 1);
+    }
 }
 
 process.on("unhandledRejection", err => logger.error("Unhandled rejection:", err));
@@ -33,18 +38,8 @@ logger.info("Starting");
 await runMilestones();
 await startStream();
 void runIf("backfill", runBackfill);
-setInterval(async() => {
-    const d = new Date();
-
-    if ((d.getMinutes() % 15) === 0 && d.getSeconds() === 0) {
-        await runIf("mentions", runMentions);
-    }
-
-    // waits for a new enough export, then does nothing once it's done
-    if (d.getMinutes() === 0 && d.getSeconds() === 0) {
-        await runIf("backfill", runBackfill);
-    }
-}, 1000);
+// waits for a new enough export, then does nothing once it's done
+setInterval(() => void runIf("backfill", runBackfill), 60 * 60 * 1000);
 
 const server = statusServer(() => discord().ready);
 process.once("SIGTERM", () => {

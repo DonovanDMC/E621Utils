@@ -1,18 +1,12 @@
+import { discord } from "./clients.js";
 import { DRY_RUN } from "./state.js";
-import { isDocker } from "./util.js";
 import config from "../config.json" with { type: "json" };
+import { DiscordHTTPError, DiscordRESTError } from "oceanic.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import { format } from "node:util";
 
-const { logWebhook, discordWebhookBaseURL } = config as { discordWebhookBaseURL?: string; logWebhook?: string; };
-// the webhook queue server keeps us under discord's rate limits, same as Websites
-const baseURL = discordWebhookBaseURL || (isDocker ? "http://discord.webhooks.local" : "https://discord.com");
-const webhook = /^https:\/\/(?:canary\.|ptb\.)?discord\.com\/api\/webhooks\/(\d+)\/([^/?]+)/.exec(logWebhook ?? "");
 // dry runs are for testing locally, so they stay in the console
-const url = webhook && !DRY_RUN ? `${baseURL}/api/webhooks/${webhook[1]}/${webhook[2]}` : null;
-if (logWebhook && !webhook) {
-    console.error("[logger] logWebhook isn't a discord webhook url, webhook logging is disabled");
-}
+const channel = DRY_RUN ? null : (config as { logsChannel?: string; }).logsChannel || null;
 
 const colors = { info: 0x008000, warn: 0xFFD700, error: 0xDC143C } as const;
 type Level = keyof typeof colors;
@@ -30,35 +24,27 @@ let flushing: Promise<void> | null = null;
 
 async function send(embeds: Array<Embed>) {
     for (let attempt = 1; attempt <= 5; attempt++) {
-        const res = await fetch(url!, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ username: "E621Utils", embeds, allowed_mentions: { parse: [] } })
-        }).catch(err => err as Error);
-        if (!(res instanceof Error) && res.ok) {
+        try {
+            // oceanic waits out rate limits itself
+            await discord().rest.channels.createMessage(channel!, { embeds, allowedMentions: { everyone: false, roles: false, users: false } });
             return;
-        }
-
-        if (!(res instanceof Error) && res.status === 429) {
-            const body = await res.json().catch(() => ({})) as { retry_after?: number; };
-            await sleep((body.retry_after ?? 1) * 1000);
-            continue;
-        }
-
-        // anything other than a rate limit or a server error won't work on a retry
-        if (!(res instanceof Error) && res.status < 500) {
-            console.error(`[logger] Webhook returned ${res.status}: ${await res.text().catch(() => "")}`);
-            return;
+        } catch (err) {
+            // console only, logging this to discord would just fail again
+            console.error(`[logger] Failed to send logs (attempt ${attempt}):`, err);
+            // anything other than a server error won't work on a retry
+            if ((err instanceof DiscordRESTError || err instanceof DiscordHTTPError) && err.status < 500) {
+                return;
+            }
         }
 
         await sleep(attempt * 2000);
     }
-    console.error("[logger] Giving up on sending to the webhook");
+    console.error("[logger] Giving up on sending logs");
 }
 
 /** sends everything queued, resolves once the queue is empty */
 export async function flush(): Promise<void> {
-    if (url === null) {
+    if (channel === null) {
         return;
     }
     flushing ??= (async() => {
@@ -77,7 +63,7 @@ let timer: NodeJS.Timeout | null = null;
 function log(level: Level, args: Array<unknown>) {
     const text = format(...args);
     (level === "info" ? console.log : console[level])(text);
-    if (url === null) {
+    if (channel === null) {
         return;
     }
 
@@ -93,7 +79,7 @@ function log(level: Level, args: Array<unknown>) {
     }, 2000);
 }
 
-/** logs to the console, and to the log webhook if there is one */
+/** logs to the console, and to the logs channel if there is one */
 const logger = {
     info:  (...args: Array<unknown>) => log("info", args),
     warn:  (...args: Array<unknown>) => log("warn", args),

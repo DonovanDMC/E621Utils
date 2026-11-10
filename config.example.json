@@ -6,6 +6,5 @@
   "tagsChannel": "",
   "mentionsChannel": "",
   "milestonesChannel": "",
-  "logWebhook": "",
-  "discordWebhookBaseURL": ""
+  "logsChannel": ""
 }
