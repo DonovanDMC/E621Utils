@@ -27,7 +27,7 @@ export function allTags(post: Pick<LegacyPost, "tags">): Array<string> {
  *
  * Returns what was actually changed.
  */
-export async function replaceSourcesOnce(id: number, replacements: Map<string, string | null>): Promise<Map<string, string | null>> {
+export async function replaceSourcesOnce(id: number, replacements: Map<string, string | null>, reason?: string): Promise<Map<string, string | null>> {
     const live = await RequestQueue.add(() => e621.posts.get(id));
     if (!live) {
         return new Map();
@@ -51,7 +51,10 @@ export async function replaceSourcesOnce(id: number, replacements: Map<string, s
         }
     }
 
-    const summary = [...changed].map(([from, to]) => `- <${from}> -> ${to === null ? "(removed)" : `<${to}>`}`).join("\n");
+    let summary = [...changed].map(([from, to]) => `- <${from}> -> ${to === null ? "(removed)" : `<${to}>`}`).join("\n");
+    if (reason) {
+        summary += `\nReason: ${reason}`;
+    }
     if (DRY_RUN) {
         logger.info(`[sources] [dry run] Would edit https://e621.net/posts/${id}\n${summary}`);
         return changed;
@@ -60,7 +63,8 @@ export async function replaceSourcesOnce(id: number, replacements: Map<string, s
     await markSourcesEdited(id, [...changed.keys()]);
     await RequestQueue.add(() => e621.posts.update(id, {
         source:     sources.join("\n"),
-        old_source: live.sources.join("\n")
+        old_source: live.sources.join("\n"),
+        ...(reason ? { edit_reason: reason } : {})
     }));
     logger.info(`[sources] Edited https://e621.net/posts/${id}\n${summary}`);
     return changed;

@@ -56,17 +56,31 @@ export function fixSource(source: string, now = Date.now()) {
     return fixed === source ? null : fixed;
 }
 
+/** e.g. 2026-11-13 04:05:06 UTC */
+function formatUTC(time: number) {
+    return `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC`;
+}
+
 async function fix(post: number, sources: Array<string>, now = Date.now()) {
-    const replacements = new Map<string, string>();
+    const replacements = new Map<string, string>(), expiries = new Set<number>();
     for (const source of sources) {
         const fixed = fixSource(source, now);
-        if (fixed !== null) {
-            replacements.set(source, fixed);
+        if (fixed === null) {
+            continue;
+        }
+
+        replacements.set(source, fixed);
+        const expires = getExpiry(source);
+        if (expires !== null && expires < now) {
+            expiries.add(expires);
         }
     }
-    if (replacements.size !== 0) {
-        await replaceSourcesOnce(post, replacements);
+    if (replacements.size === 0) {
+        return;
     }
+
+    const reason = expiries.size === 0 ? undefined : `[discord-cdn-params] URL expired at ${formatUTC(Math.min(...expiries))}`;
+    await replaceSourcesOnce(post, replacements, reason);
 }
 
 const discordCDNParams: PostHandler = {
