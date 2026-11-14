@@ -8,6 +8,7 @@
   "milestonesChannel": "",
   "logsChannel": "",
   "dmailsChannel": "",
+  "revertsChannel": "",
   "mysavesURL": "https://saves.furry.cool",
   "mysavesApiKey": ""
 }

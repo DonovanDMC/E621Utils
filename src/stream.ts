@@ -6,10 +6,11 @@ import logger from "./logger.js";
 import { handleMention, isMention } from "./mentions.js";
 import nukeTags from "./nuke-tags.js";
 import ratios from "./ratios.js";
+import { findUndone, handleOwnVersion, handleUndone, revertsEnabled } from "./reverts.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
-import { E621Stream, type LegacyPost } from "e621stream";
+import { E621Stream, type LegacyPost, type PostVersion } from "e621stream";
 
 const handlers: Array<PostHandler> = [discordCDNParams, ratios, nukeTags];
 
@@ -100,11 +101,22 @@ function onMention(id: string, type: Parameters<typeof handleMention>[0], input:
     enqueue(id, async() => handleMention(type, input).catch(err => logger.error(`[stream] Failed to send the mention from ${type} ${input.id}:`, err)));
 }
 
+function onVersion(id: string, version: PostVersion) {
+    // ours are only saved, which is safe to repeat if they're replayed
+    if (handleOwnVersion(version) || findUndone(version).length === 0) {
+        skip(id);
+        return;
+    }
+
+    enqueue(id, async() => handleUndone(version).catch(err => logger.error(`[stream] Failed to log undone edits from version ${version.id}:`, err)));
+}
+
 function onSet(id: string, setId: number) {
     enqueue(id, async() => onSetChanged(setId).catch(err => logger.error(`[stream] Failed to update set ${setId}:`, err)));
 }
 
 let stream: E621Stream | undefined;
+export const getStream = () => stream;
 export async function startStream() {
     if (stream !== undefined) {
         return stream;
@@ -124,7 +136,7 @@ export async function startStream() {
         client:        "E621Utils",
         // STREAM_CURSOR can be an event id or a ms timestamp, for replaying by hand
         cursor:        process.env.STREAM_CURSOR ?? cursor ?? undefined,
-        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create", ...(dmailsEnabled ? ["dmail.create"] : []), ...setSubscriptions()]
+        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create", ...(revertsEnabled ? ["post_version.create"] : []), ...(dmailsEnabled ? ["dmail.create"] : []), ...setSubscriptions()]
     });
 
     stream.on("ready", ready => {
@@ -142,6 +154,7 @@ export async function startStream() {
     stream.on("blip.create", event => onMention(event.id, "blip", event.data));
     stream.on("comment.create", event => onMention(event.id, "comment", event.data));
     stream.on("forum_post.create", event => onMention(event.id, "forumPost", event.data));
+    stream.on("post_version.create", event => onVersion(event.id, event.data));
     stream.on("post_set.add_posts", event => onSet(event.id, event.data.post_set.id));
     stream.on("post_set.remove_posts", event => onSet(event.id, event.data.post_set.id));
     // private, so they aren't part of the cursor and skip the cursor queue

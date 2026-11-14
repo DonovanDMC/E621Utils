@@ -4,6 +4,7 @@ import { initChecks } from "./checks.js";
 import { discord } from "./clients.js";
 import logger, { flush } from "./logger.js";
 import { runMilestones } from "./milestones.js";
+import { runRevertsBackfill } from "./reverts.js";
 import { startStream } from "./stream.js";
 import statusServer from "@uwu-codes/status-server";
 
@@ -41,6 +42,9 @@ await startStream();
 void runIf("backfill", runBackfill);
 // waits for a new enough export, then does nothing once it's done
 setInterval(() => void runIf("backfill", runBackfill), 60 * 60 * 1000);
+// crawls our post versions once, retried hourly if it fails partway
+void runIf("reverts", runRevertsBackfill);
+setInterval(() => void runIf("reverts", runRevertsBackfill), 60 * 60 * 1000);
 
 const server = statusServer(() => discord().ready);
 process.once("SIGTERM", () => {
