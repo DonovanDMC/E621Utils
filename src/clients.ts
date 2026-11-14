@@ -24,7 +24,8 @@ export function discord() {
             console.debug("[Oceanic]: Ready as %s#%s", client!.user.tag);
             await client!.application.bulkEditGuildCommands(config.guild, [
                 { type: Oceanic.ApplicationCommandTypes.CHAT_INPUT, name: "run-checks", description: "Force run the checks now." },
-                { type: Oceanic.ApplicationCommandTypes.CHAT_INPUT, name: "dump-cache", description: "List the currently cached posts." }
+                { type: Oceanic.ApplicationCommandTypes.CHAT_INPUT, name: "dump-cache", description: "List the currently cached posts." },
+                { type: Oceanic.ApplicationCommandTypes.CHAT_INPUT, name: "run-backfill", description: "Run the posts export through the handlers again, after the current run if there is one." }
             ]);
         });
         void client.connect();

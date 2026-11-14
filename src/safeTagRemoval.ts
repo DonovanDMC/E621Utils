@@ -40,7 +40,7 @@ async function isImpliedBy(tag: string, tags: Array<string>): Promise<boolean> {
  *
  * Returns whether an edit was actually made.
  */
-export async function safeRemoveTags(id: number, tagsToRemove: Array<string>): Promise<boolean> {
+export async function safeRemoveTags(id: number, tagsToRemove: Array<string>, reason?: string): Promise<boolean> {
     if (tagsToRemove.length === 0) {
         return false;
     }
@@ -72,7 +72,8 @@ export async function safeRemoveTags(id: number, tagsToRemove: Array<string>): P
 
     const updated = await RequestQueue.add(() => e621.posts.update(id, {
         tag_string_diff: diff,
-        old_tag_string:  before.join(" ")
+        old_tag_string:  before.join(" "),
+        ...(reason ? { edit_reason: reason } : {})
     }));
 
     const after = flattenTags(updated.tags);
@@ -120,7 +121,7 @@ export async function safeRemoveTags(id: number, tagsToRemove: Array<string>): P
  * {@link safeRemoveTags}, but each tag is only ever removed from a post once. If someone
  * puts it back after that, it's left alone instead of fighting them over it.
  */
-export async function removeTagsOnce(id: number, tags: Array<string>): Promise<Array<string>> {
+export async function removeTagsOnce(id: number, tags: Array<string>, reason?: string): Promise<Array<string>> {
     const toRemove: Array<string> = [];
     for (const tag of tags) {
         if (!toRemove.includes(tag) && !wasTagRemoved(id, tag)) {
@@ -132,5 +133,5 @@ export async function removeTagsOnce(id: number, tags: Array<string>): Promise<A
     }
 
     await markTagsRemoved(id, toRemove);
-    return await safeRemoveTags(id, toRemove) ? toRemove : [];
+    return await safeRemoveTags(id, toRemove, reason) ? toRemove : [];
 }

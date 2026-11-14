@@ -29,11 +29,24 @@ const tags = new Set([
     "black_muzzle"
 ]);
 
-// anything used this much should be looked at by hand, invalid_tag is always removed
-const MAX_POSTS = 100;
-const noLimit = new Set(["invalid_tag"]);
+interface Conditional {
+    /** used as the edit reason */
+    reason?: string;
+    when(post: HandlerPost): boolean;
+}
+// only removed from the posts they're wrong on, they're fine everywhere else
+const conditional: Record<string, Conditional> = {
+    no_sound: {
+        reason: "[nuke-tags] file cannot have sound",
+        when:   post => ["png", "gif", "webp"].includes(post.file.ext)
+    }
+};
 
-const matching = (post: HandlerPost) => allTags(post).filter(tag => tags.has(tag));
+// anything used this much should be looked at by hand, invalid_tag and the conditional ones are always removed
+const MAX_POSTS = 100;
+const noLimit = new Set(["invalid_tag", ...Object.keys(conditional)]);
+
+const matching = (post: HandlerPost) => allTags(post).filter(tag => tags.has(tag) || conditional[tag]?.when(post));
 
 const lookups = new Map<string, { skip: boolean; time: number; }>();
 async function isTooBig(tag: string) {
@@ -60,15 +73,19 @@ const nukeTags: PostHandler = {
     name:  "nuke-tags",
     check: post => matching(post).length !== 0,
     async run(post) {
-        const remove: Array<string> = [];
+        // an edit only has one reason, so tags with different ones are removed separately
+        const byReason = new Map<string | undefined, Array<string>>();
         for (const tag of matching(post)) {
             if (!await isTooBig(tag)) {
-                remove.push(tag);
+                const reason = tags.has(tag) ? undefined : conditional[tag]!.reason;
+                byReason.set(reason, [...byReason.get(reason) ?? [], tag]);
             }
         }
 
-        for (const tag of await removeTagsOnce(post.id, remove)) {
-            logger.info(`[nuke-tags] Removed ${tag} from https://e621.net/posts/${post.id}`);
+        for (const [reason, remove] of byReason) {
+            for (const tag of await removeTagsOnce(post.id, remove, reason)) {
+                logger.info(`[nuke-tags] Removed ${tag} from https://e621.net/posts/${post.id}`);
+            }
         }
     }
 };

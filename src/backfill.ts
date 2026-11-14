@@ -4,6 +4,7 @@ import logger from "./logger.js";
 import { saveState, state } from "./state.js";
 import { matchHandlers, runHandlers, runQueued } from "./stream.js";
 import E621ExportDownloader, { type PostData } from "e621-export-downloader";
+import { type AnyInteractionGateway, CommandInteraction, MessageFlags } from "oceanic.js";
 
 // the file is deleted once it's been fully read
 const client = new E621ExportDownloader({ cache: false });
@@ -12,15 +13,16 @@ const client = new E621ExportDownloader({ cache: false });
 function toPost(record: PostData): HandlerPost {
     return {
         id:      record.id,
+        file:    { ext: record.file_ext },
         sources: record.sources,
         tags:    { artist: [], character: [], contributor: [], copyright: [], general: record.tags, invalid: [], lore: [], meta: [], species: [] }
     };
 }
 
-let running = false;
+let running = false, requested = false;
 /**
  * Goes over the first posts export made after the stream was started, through the same handlers and queue as the
- * stream, so anything from before then is caught. Only ever done once, and resumes where it left off after a restart.
+ * stream, so anything from before then is caught. Only done once unless /run-backfill is used, and resumes where it left off after a restart.
  */
 export async function runBackfill() {
     const s = state();
@@ -89,5 +91,34 @@ export async function runBackfill() {
         logger.error("[backfill] Failed, retrying on the next check:", err);
     } finally {
         running = false;
+        if (requested) {
+            requested = false;
+            void restartBackfill();
+        }
     }
+}
+
+/** starts over on the latest export, returns false if one is already running (it's ran again once that finishes) */
+async function restartBackfill() {
+    if (running) {
+        requested = true;
+        return false;
+    }
+    // without one it uses the latest export, there's no waiting since startedAt is already behind it
+    delete state().backfill;
+    await saveState();
+    void runBackfill();
+    return true;
+}
+
+/** for when the handlers change, and posts the backfill already went past need to be looked at again */
+export async function onBackfillCommand(interaction: AnyInteractionGateway) {
+    if (!(interaction instanceof CommandInteraction) || interaction.data.name !== "run-backfill") {
+        return;
+    }
+    const started = await restartBackfill();
+    await interaction.createMessage({
+        flags:   MessageFlags.EPHEMERAL,
+        content: started ? "Backfill started." : "A backfill is already running, another will start once it's done."
+    });
 }

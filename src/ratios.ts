@@ -17,7 +17,8 @@ const whitelisted = new Set([
 // anything used this much is probably intentional, and should be looked at by hand
 const MAX_POSTS = 25;
 
-const ratio = /^\d+:\d+$/;
+// either side can have a decimal, like 2.35:1
+const ratio = /^\d+(?:\.\d+)?:\d+(?:\.\d+)?$/;
 const candidates = (post: HandlerPost) => allTags(post).filter(tag => ratio.test(tag) && !whitelisted.has(tag));
 
 const lookups = new Map<string, { remove: boolean; time: number; }>();
@@ -57,7 +58,7 @@ const ratios: PostHandler = {
             }
         }
 
-        for (const tag of await removeTagsOnce(post.id, tags)) {
+        for (const tag of await removeTagsOnce(post.id, tags, "[ratios] not whitelisted")) {
             logger.info(`[ratios] Removed ${tag} from https://e621.net/posts/${post.id}`);
         }
     }

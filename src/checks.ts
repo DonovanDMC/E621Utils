@@ -11,6 +11,7 @@ import config from "../config.json" with { type: "json" };
 import {
     type EmbedOptions,
     MessageFlags,
+    CommandInteraction,
     ComponentTypes,
     ButtonStyles,
     ComponentInteraction,
@@ -122,94 +123,107 @@ async function saveTracked() {
     await writeCache(cache);
 }
 
+// the slash commands do the same as the buttons on the status message
+const commands: Record<string, string> = { "run-checks": "run-checks", "dump-cache": "list-cache" };
+
 async function onInteraction(interaction: AnyInteractionGateway) {
+    let command: string | undefined, args: Array<string>;
     if (interaction instanceof ComponentInteraction) {
-        await interaction.defer(MessageFlags.EPHEMERAL);
-        const [command, ...args] = interaction.data.customID.split(":");
-        switch (command) {
-            case "run-checks": {
-                void runQueued(runChecks);
+        [command, ...args] = interaction.data.customID.split(":");
+    } else if (interaction instanceof CommandInteraction && interaction.data.name in commands) {
+        command = commands[interaction.data.name];
+        args = [];
+    } else {
+        return;
+    }
+
+    await interaction.defer(MessageFlags.EPHEMERAL);
+    switch (command) {
+        case "run-checks": {
+            void runQueued(runChecks);
+            return interaction.createFollowup({
+                flags:   MessageFlags.EPHEMERAL,
+                content: "Running."
+            });
+        }
+
+        case "list-cache": {
+            if (tracked.size === 0) {
                 return interaction.createFollowup({
                     flags:   MessageFlags.EPHEMERAL,
-                    content: "Running."
+                    content: "There are currently 0 cached posts."
                 });
             }
 
-            case "list-cache": {
-                if (tracked.size === 0) {
+            const embeds: Array<EmbedOptions> = [];
+            const posts = await RequestQueue.add(() => e621.posts.search({ tags: `id:${[...tracked.keys()].join(",")}`, v2: true, mode: "extended" }));
+            for (const entry of tracked.values()) {
+                embeds.push(makeEmbed(entry, posts.find(p => p.id === entry.post) ?? null, null));
+            }
+
+            const eb = chunk(embeds, 10);
+            const initial = eb.shift()!;
+            await interaction.createFollowup({
+                flags:   MessageFlags.EPHEMERAL,
+                content: `There are currently ${tracked.size} cached posts.`,
+                embeds:  initial
+            });
+            for (const e of eb.values()) {
+                await interaction.createFollowup({
+                    embeds: e,
+                    flags:  MessageFlags.EPHEMERAL
+                });
+            }
+            break;
+        }
+
+        case "clear-cache": {
+            tracked.clear();
+            await saveTracked();
+            await interaction.createFollowup({
+                flags:   MessageFlags.EPHEMERAL,
+                content: "Cache cleared."
+            });
+            break;
+        }
+
+        case "remove-post": {
+            if (!(interaction instanceof ComponentInteraction)) {
+                return;
+            }
+            const id = Number(args[0]);
+            const entry = tracked.get(id);
+            if (entry === undefined) {
+                return interaction.createFollowup({
+                    flags:   MessageFlags.EPHEMERAL,
+                    content: "That post is not cached."
+                });
+            }
+
+            // otherwise the next review poll would just add it back
+            let unreviewed = false;
+            if (entry.tags.includes(REVIEW) && mysavesEnabled) {
+                try {
+                    unreviewed = await removeReview(id);
+                } catch (err) {
+                    logger.error(`[checks] Failed to remove https://e621.net/posts/${id} from review in MySaves:`, err);
                     return interaction.createFollowup({
                         flags:   MessageFlags.EPHEMERAL,
-                        content: "There are currently 0 cached posts."
+                        content: "Failed to remove the post from review in MySaves, so it was left as is."
                     });
                 }
-
-                const embeds: Array<EmbedOptions> = [];
-                const posts = await RequestQueue.add(() => e621.posts.search({ tags: `id:${[...tracked.keys()].join(",")}`, v2: true, mode: "extended" }));
-                for (const entry of tracked.values()) {
-                    embeds.push(makeEmbed(entry, posts.find(p => p.id === entry.post) ?? null, null));
-                }
-
-                const eb = chunk(embeds, 10);
-                const initial = eb.shift()!;
-                await interaction.createFollowup({
-                    flags:   MessageFlags.EPHEMERAL,
-                    content: `There are currently ${tracked.size} cached posts.`,
-                    embeds:  initial
-                });
-                for (const e of eb.values()) {
-                    await interaction.createFollowup({
-                        embeds: e,
-                        flags:  MessageFlags.EPHEMERAL
-                    });
-                }
-                break;
+                reviews?.delete(id);
             }
 
-            case "clear-cache": {
-                tracked.clear();
-                await saveTracked();
-                await interaction.createFollowup({
-                    flags:   MessageFlags.EPHEMERAL,
-                    content: "Cache cleared."
-                });
-                break;
-            }
-
-            case "remove-post": {
-                const id = Number(args[0]);
-                const entry = tracked.get(id);
-                if (entry === undefined) {
-                    return interaction.createFollowup({
-                        flags:   MessageFlags.EPHEMERAL,
-                        content: "That post is not cached."
-                    });
-                }
-
-                // otherwise the next review poll would just add it back
-                let unreviewed = false;
-                if (entry.tags.includes(REVIEW) && mysavesEnabled) {
-                    try {
-                        unreviewed = await removeReview(id);
-                    } catch (err) {
-                        logger.error(`[checks] Failed to remove https://e621.net/posts/${id} from review in MySaves:`, err);
-                        return interaction.createFollowup({
-                            flags:   MessageFlags.EPHEMERAL,
-                            content: "Failed to remove the post from review in MySaves, so it was left as is."
-                        });
-                    }
-                    reviews?.delete(id);
-                }
-
-                tracked.delete(id);
-                await saveTracked();
-                await interaction.message.delete();
-                scheduleStatus(false);
-                await interaction.createFollowup({
-                    flags:   MessageFlags.EPHEMERAL,
-                    content: unreviewed ? "Post removed, and taken out of review in MySaves." : "Post removed."
-                });
-                break;
-            }
+            tracked.delete(id);
+            await saveTracked();
+            await interaction.message.delete();
+            scheduleStatus(false);
+            await interaction.createFollowup({
+                flags:   MessageFlags.EPHEMERAL,
+                content: unreviewed ? "Post removed, and taken out of review in MySaves." : "Post removed."
+            });
+            break;
         }
     }
 }

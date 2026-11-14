@@ -5,7 +5,7 @@ import { DRY_RUN, markSourcesEdited, wasSourceEdited } from "./state.js";
 import type { LegacyPost } from "e621stream";
 
 /** what handlers get to look at, it's all export rows have too */
-export type HandlerPost = Pick<LegacyPost, "id" | "sources" | "tags">;
+export type HandlerPost = Pick<LegacyPost, "id" | "sources" | "tags"> & { file: Pick<LegacyPost["file"], "ext">; };
 
 export interface PostHandler {
     /**
