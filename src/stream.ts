@@ -1,10 +1,10 @@
 import { initChecks, needsTagCheck, onSetChanged, recheckPost, setSubscriptions } from "./checks.js";
+import cleanup from "./cleanup.js";
 import discordCDNParams, { fixExpiredSources } from "./discord-cdn-params.js";
 import { dmailsEnabled, handleDMail } from "./dmails.js";
 import type { HandlerPost, PostHandler } from "./handler.js";
 import logger from "./logger.js";
 import { handleMention, isMention } from "./mentions.js";
-import nukeTags from "./nuke-tags.js";
 import ratios from "./ratios.js";
 import { findUndone, handleOwnVersion, handleUndone, revertsEnabled } from "./reverts.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
@@ -12,7 +12,7 @@ import { isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
 import { E621Stream, type LegacyPost, type PostVersion } from "e621stream";
 
-const handlers: Array<PostHandler> = [discordCDNParams, ratios, nukeTags];
+const handlers: Array<PostHandler> = [discordCDNParams, ratios, cleanup];
 
 interface Job {
     /** saved once this job is done, it's moved forward when events are skipped while it's queued */

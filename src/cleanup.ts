@@ -37,7 +37,7 @@ interface Conditional {
 // only removed from the posts they're wrong on, they're fine everywhere else
 const conditional: Record<string, Conditional> = {
     no_sound: {
-        reason: "[nuke-tags] file cannot have sound",
+        reason: "[cleanup] file cannot have sound",
         when:   post => ["png", "gif", "webp"].includes(post.file.ext)
     }
 };
@@ -63,14 +63,14 @@ async function isTooBig(tag: string) {
     const skip = (info?.post_count ?? 0) > MAX_POSTS;
     // only logged when it's looked up, so it isn't repeated for every post
     if (skip) {
-        logger.warn(`[nuke-tags] Skipping ${tag} for the next day, it has ${info!.post_count} posts`);
+        logger.warn(`[cleanup] Skipping ${tag} for the next day, it has ${info!.post_count} posts`);
     }
     lookups.set(tag, { skip, time: Date.now() });
     return skip;
 }
 
-const nukeTags: PostHandler = {
-    name:  "nuke-tags",
+const cleanup: PostHandler = {
+    name:  "cleanup",
     check: post => matching(post).length !== 0,
     async run(post) {
         // an edit only has one reason, so tags with different ones are removed separately
@@ -84,9 +84,9 @@ const nukeTags: PostHandler = {
 
         for (const [reason, remove] of byReason) {
             for (const tag of await removeTagsOnce(post.id, remove, reason)) {
-                logger.info(`[nuke-tags] Removed ${tag} from https://e621.net/posts/${post.id}`);
+                logger.info(`[cleanup] Removed ${tag} from https://e621.net/posts/${post.id}`);
             }
         }
     }
 };
-export default nukeTags;
+export default cleanup;
