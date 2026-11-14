@@ -8,7 +8,7 @@ import config from "../config.json" with { type: "json" };
 import type { PostVersion } from "e621stream";
 import { ButtonStyles, ComponentTypes } from "oceanic.js";
 import { Database } from "bun:sqlite";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, rmSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const channel = (config as { revertsChannel?: string; }).revertsChannel || null;
@@ -317,8 +317,9 @@ let lastSnapshot = 0;
 /**
  * The current state of the posts, destroyed posts are left out. The stream's snapshots are used where it has
  * them, which saves e621 the requests, and anything it doesn't have (or isn't connected for) is fetched from e621.
+ * Snapshots can be behind, so they're only used when `trust` says they agree with what we expect.
  */
-async function getPosts(ids: Array<number>) {
+async function getPosts(ids: Array<number>, trust: (id: number, post: CurrentPost) => boolean) {
     const found = new Map<number, CurrentPost>();
     const stream = getStream();
     if (stream) {
@@ -333,7 +334,10 @@ async function getPosts(ids: Array<number>) {
             for (const snap of Object.values(snapshots ?? {})) {
                 // only id is guaranteed, the rest are fetched if any are missing
                 if (snap?.tags && snap.rating && snap.parent_id !== undefined) {
-                    found.set(snap.id, { parent: String(snap.parent_id ?? ""), rating: snap.rating, tags: new Set(Object.values(snap.tags).flat()) });
+                    const post = { parent: String(snap.parent_id ?? ""), rating: snap.rating, tags: new Set(Object.values(snap.tags).flat()) };
+                    if (trust(snap.id, post)) {
+                        found.set(snap.id, post);
+                    }
                 }
             }
         }
@@ -341,7 +345,8 @@ async function getPosts(ids: Array<number>) {
 
     const missing = ids.filter(id => !found.has(id));
     for (let i = 0; i < missing.length; i += SEARCH_SIZE) {
-        const { posts } = await get<{ posts: Array<{ id: number; rating: string; relationships: { parent_id: number | null; }; tags: Record<string, Array<string>>; }>; }>(`/posts.json?limit=320&tags=${encodeURIComponent(`status:any id:${missing.slice(i, i + SEARCH_SIZE).join(",")}`)}`);
+        // v1 is asked for by name, e621 is moving the default to v2
+        const { posts } = await get<{ posts: Array<{ id: number; rating: string; relationships: { parent_id: number | null; }; tags: Record<string, Array<string>>; }>; }>(`/posts.json?v1=true&limit=320&tags=${encodeURIComponent(`status:any id:${missing.slice(i, i + SEARCH_SIZE).join(",")}`)}`);
         for (const p of posts) {
             found.set(p.id, { parent: String(p.relationships.parent_id ?? ""), rating: p.rating, tags: new Set(Object.values(p.tags).flat()) });
         }
@@ -389,7 +394,8 @@ async function verify() {
         if (ids.length === 0) {
             break;
         }
-        const posts = await getPosts(ids);
+        // a snapshot that's behind can show one of our newer edits as undone, so those are checked with e621
+        const posts = await getPosts(ids, (id, post) => editsFor.all(id).every(e => stillInPlace(e, post)));
         const stale: Array<Edit> = [];
         let text = "";
         for (const id of ids) {
@@ -424,9 +430,17 @@ async function verify() {
 }
 
 /** the first run crawls everything, after that it's all from the stream. resumes where it left off after a restart */
+// bump to redo the crawl and check, what's already tracked is kept and anything the check dropped is crawled again
+const BASELINE = 2;
+
 export async function runRevertsBackfill() {
     if (!revertsEnabled) {
         return;
+    }
+    if (getMeta("baseline") !== String(BASELINE)) {
+        getDB().run("DELETE FROM meta WHERE key IN ('crawl.before', 'crawl.done', 'verify.after', 'verify.done')");
+        rmSync(existingFile, { force: true });
+        setMeta("baseline", BASELINE);
     }
     if (getMeta("crawl.done") === null) {
         await crawl();

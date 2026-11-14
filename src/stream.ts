@@ -10,7 +10,7 @@ import { findUndone, handleOwnVersion, handleUndone, revertsEnabled } from "./re
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
-import { E621Stream, type LegacyPost, type PostVersion } from "e621stream";
+import { E621Stream, type LegacyPost, type PostVersion, type Recovery } from "e621stream";
 
 const handlers: Array<PostHandler> = [discordCDNParams, ratios, cleanup];
 
@@ -92,13 +92,13 @@ function onPost(id: string, post: LegacyPost) {
     });
 }
 
-function onMention(id: string, type: Parameters<typeof handleMention>[0], input: Parameters<typeof handleMention>[1]) {
+function onMention(id: string, type: Parameters<typeof handleMention>[0], input: Parameters<typeof handleMention>[1], recovered: boolean) {
     if (!isMention(input)) {
         skip(id);
         return;
     }
 
-    enqueue(id, async() => handleMention(type, input).catch(err => logger.error(`[stream] Failed to send the mention from ${type} ${input.id}:`, err)));
+    enqueue(id, async() => handleMention(type, input, recovered).catch(err => logger.error(`[stream] Failed to send the mention from ${type} ${input.id}:`, err)));
 }
 
 function onVersion(id: string, version: PostVersion) {
@@ -113,6 +113,16 @@ function onVersion(id: string, version: PostVersion) {
 
 function onSet(id: string, setId: number) {
     enqueue(id, async() => onSetChanged(setId).catch(err => logger.error(`[stream] Failed to update set ${setId}:`, err)));
+}
+
+/** the server going back over a window it missed, the events it sends can be hours old */
+function logRecovery(r: Recovery) {
+    const window = `${r.from} to ${r.to} (${r.sources.join(", ")})`;
+    if (!r.done) {
+        logger.info(`[stream] Recovery ${r.id} started, going back over ${window}`);
+    } else {
+        (r.status === "done" || r.status === undefined ? logger.info : logger.warn)(`[stream] Recovery ${r.id} ${r.status ?? "done"}, ${r.events ?? 0} events from ${window}`);
+    }
 }
 
 let stream: E621Stream | undefined;
@@ -144,16 +154,20 @@ export async function startStream() {
         if (ready.cursor_expired) {
             logger.warn("[stream] The saved cursor is older than the stream keeps (24 hours), anything before the oldest kept event was missed");
         }
+        if (ready.recovery) {
+            logRecovery(ready.recovery);
+        }
     });
+    stream.on("recovery", logRecovery);
     stream.on("replayComplete", ({ events }) => logger.info(`[stream] Replayed ${events} events`));
     stream.on("reconnecting", ({ attempt, delayMS }) => logger.info(`[stream] Reconnecting in ${delayMS}ms (attempt ${attempt})`));
     stream.on("close", ({ code, reason, reconnecting }) => logger.info(`[stream] Closed (${code}: ${reason})${reconnecting ? "" : ", not reconnecting"}`));
     stream.on("error", err => logger.error("[stream] Error:", err));
     stream.on("post.create", event => onPost(event.id, event.data.post));
     stream.on("post.update", event => onPost(event.id, event.data.post));
-    stream.on("blip.create", event => onMention(event.id, "blip", event.data));
-    stream.on("comment.create", event => onMention(event.id, "comment", event.data));
-    stream.on("forum_post.create", event => onMention(event.id, "forumPost", event.data));
+    stream.on("blip.create", event => onMention(event.id, "blip", event.data, event.recovered === true));
+    stream.on("comment.create", event => onMention(event.id, "comment", event.data, event.recovered === true));
+    stream.on("forum_post.create", event => onMention(event.id, "forumPost", event.data, event.recovered === true));
     stream.on("post_version.create", event => onVersion(event.id, event.data));
     stream.on("post_set.add_posts", event => onSet(event.id, event.data.post_set.id));
     stream.on("post_set.remove_posts", event => onSet(event.id, event.data.post_set.id));

@@ -63,9 +63,12 @@ async function send(input: Mentionable, type: MentionType) {
     });
 }
 
-/** sends a mention to discord, unless it's already been sent (the stream can replay events after a restart) */
-export async function handleMention(type: MentionType, input: Mentionable) {
-    if (input.id <= (await readCache()).lastSeen[type]) {
+/**
+ * Sends a mention to discord, unless it's already been sent (the stream can replay events after a restart).
+ * Recovered ones are older than what's already been seen, and the stream only sends ones we missed, so they aren't checked.
+ */
+export async function handleMention(type: MentionType, input: Mentionable, recovered = false) {
+    if (!recovered && input.id <= (await readCache()).lastSeen[type]) {
         return;
     }
     if (DRY_RUN) {
