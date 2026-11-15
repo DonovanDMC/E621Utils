@@ -4,13 +4,13 @@ import discordCDNParams, { fixExpiredSources } from "./discord-cdn-params.js";
 import { dmailsEnabled, handleDMail } from "./dmails.js";
 import type { HandlerPost, PostHandler } from "./handler.js";
 import logger from "./logger.js";
-import { handleMention, isMention } from "./mentions.js";
+import { getOwnTopic, handleMention, handleTopic, isMention, isOwn, setAuthUser } from "./mentions.js";
 import ratios from "./ratios.js";
 import { findUndone, handleOwnVersion, handleUndone, revertsEnabled } from "./reverts.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
-import { E621Stream, type LegacyPost, type PostVersion, type Recovery } from "e621stream";
+import { E621Stream, type ForumPost, type ForumTopic, type LegacyPost, type PostVersion, type Recovery } from "e621stream";
 
 const handlers: Array<PostHandler> = [discordCDNParams, ratios, cleanup];
 
@@ -101,6 +101,37 @@ function onMention(id: string, type: Parameters<typeof handleMention>[0], input:
     enqueue(id, async() => handleMention(type, input, recovered).catch(err => logger.error(`[stream] Failed to send the mention from ${type} ${input.id}:`, err)));
 }
 
+/** forum posts are also sent when they're a reply to one of our topics */
+function onForumPost(id: string, post: ForumPost, recovered: boolean) {
+    const mention = isMention(post);
+    if (!mention && isOwn(post)) {
+        skip(id);
+        return;
+    }
+
+    enqueue(id, async() => {
+        const topic = await getOwnTopic(post.topic_id).catch(err => {
+            logger.error(`[stream] Failed to get topic ${post.topic_id} for forum post ${post.id}:`, err);
+            return null;
+        });
+        // our own posts in our topics are only sent if they mention us
+        if (!mention && (topic === null || isOwn(post))) {
+            return;
+        }
+        await handleMention("forumPost", post, recovered, isOwn(post) ? undefined : topic ?? undefined)
+            .catch(err => logger.error(`[stream] Failed to send the ${topic ? "reply" : "mention"} from forum post ${post.id}:`, err));
+    });
+}
+
+function onTopic(id: string, topic: ForumTopic) {
+    if (!isOwn(topic)) {
+        skip(id);
+        return;
+    }
+
+    enqueue(id, async() => handleTopic(topic).catch(err => logger.error(`[stream] Failed to save topic ${topic.id}:`, err)));
+}
+
 function onVersion(id: string, version: PostVersion) {
     // ours are only saved, which is safe to repeat if they're replayed
     if (handleOwnVersion(version) || findUndone(version).length === 0) {
@@ -146,11 +177,12 @@ export async function startStream() {
         client:        "E621Utils",
         // STREAM_CURSOR can be an event id or a ms timestamp, for replaying by hand
         cursor:        process.env.STREAM_CURSOR ?? cursor ?? undefined,
-        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create", ...(revertsEnabled ? ["post_version.create"] : []), ...(dmailsEnabled ? ["dmail.create"] : []), ...setSubscriptions()]
+        subscriptions: ["post.create", "post.update", "blip.create", "comment.create", "forum_post.create", "forum_topic.create", ...(revertsEnabled ? ["post_version.create"] : []), ...(dmailsEnabled ? ["dmail.create"] : []), ...setSubscriptions()]
     });
 
     stream.on("ready", ready => {
         logger.info(`[stream] Ready as ${ready.user?.name ?? "anonymous"}${ready.replaying ? ", replaying" : ""}`);
+        setAuthUser(ready.user?.id ?? null);
         if (ready.cursor_expired) {
             logger.warn("[stream] The saved cursor is older than the stream keeps (24 hours), anything before the oldest kept event was missed");
         }
@@ -167,7 +199,8 @@ export async function startStream() {
     stream.on("post.update", event => onPost(event.id, event.data.post));
     stream.on("blip.create", event => onMention(event.id, "blip", event.data, event.recovered === true));
     stream.on("comment.create", event => onMention(event.id, "comment", event.data, event.recovered === true));
-    stream.on("forum_post.create", event => onMention(event.id, "forumPost", event.data, event.recovered === true));
+    stream.on("forum_post.create", event => onForumPost(event.id, event.data, event.recovered === true));
+    stream.on("forum_topic.create", event => onTopic(event.id, event.data));
     stream.on("post_version.create", event => onVersion(event.id, event.data));
     stream.on("post_set.add_posts", event => onSet(event.id, event.data.post_set.id));
     stream.on("post_set.remove_posts", event => onSet(event.id, event.data.post_set.id));

@@ -25,6 +25,8 @@ export interface StreamState {
     cursor: string | null;
     /** sources we've edited, per post. anything in here is never touched again, even if someone puts it back */
     editedSources: Record<number, Array<string>>;
+    /** topics we've created and their titles, the replies to them are sent with mentions */
+    ownTopics?: Record<number, string>;
     /** discord urls that haven't expired yet, rechecked once they have */
     pendingSources: Array<PendingSource>;
     /** tags we've tried removing, per post. same as editedSources, these are never removed a second time */
