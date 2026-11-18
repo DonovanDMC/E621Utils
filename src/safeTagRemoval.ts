@@ -2,12 +2,6 @@ import { e621 } from "./clients.js";
 import logger, { flush } from "./logger.js";
 import RequestQueue from "./queue.js";
 import { DRY_RUN, markTagsRemoved, wasTagRemoved } from "./state.js";
-import type { Post } from "e621";
-
-function flattenTags(tags: Post["tags"]): Array<string> {
-    return Object.values(tags).flat();
-}
-
 // posts can be behind on implications (usually ones still processing), any edit will cause missing implied tags to be added
 async function isImpliedBy(tag: string, tags: Array<string>): Promise<boolean> {
     const implications = await RequestQueue.add(() => e621.tagImplications.search({ consequent_name: tag, limit: 320 }));
@@ -51,9 +45,9 @@ export async function safeRemoveTags(id: number, tagsToRemove: Array<string>, re
         return false;
     }
 
-    const before = flattenTags(live.tags);
+    const before = live.tags;
     // locked tags can't be removed anyway, and someone locked them for a reason
-    const toRemove = tagsToRemove.filter(tag => before.includes(tag) && !live.locked_tags?.includes(tag));
+    const toRemove = tagsToRemove.filter(tag => before.includes(tag) && !live.locked_tags.includes(tag));
     if (toRemove.length === 0) {
         return false;
     }
@@ -76,7 +70,7 @@ export async function safeRemoveTags(id: number, tagsToRemove: Array<string>, re
         ...(reason ? { edit_reason: reason } : {})
     }));
 
-    const after = flattenTags(updated.tags);
+    const after = updated.tags;
     const stillPresent = toRemove.filter(tag => after.includes(tag));
     const missingExpected = expectedAfter.filter(tag => !after.includes(tag));
     const unexpectedExtra: Array<string> = [];

@@ -5,7 +5,7 @@ import { getFileURL, isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
 
 async function notify(id: number) {
-    const post = (await e621.posts.get(id, { v2: true }))!;
+    const post = (await e621.posts.get(id))!;
     await discord().rest.channels.createMessage(config.milestonesChannel, {
         embeds: [
             {

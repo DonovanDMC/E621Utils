@@ -345,10 +345,9 @@ async function getPosts(ids: Array<number>, trust: (id: number, post: CurrentPos
 
     const missing = ids.filter(id => !found.has(id));
     for (let i = 0; i < missing.length; i += SEARCH_SIZE) {
-        // v1 is asked for by name, e621 is moving the default to v2
-        const { posts } = await get<{ posts: Array<{ id: number; rating: string; relationships: { parent_id: number | null; }; tags: Record<string, Array<string>>; }>; }>(`/posts.json?v1=true&limit=320&tags=${encodeURIComponent(`status:any id:${missing.slice(i, i + SEARCH_SIZE).join(",")}`)}`);
+        const posts = await get<Array<{ id: number; rating: string; relationships: { parent_id: number | null; }; tags: Array<string>; }>>(`/posts.json?limit=320&tags=${encodeURIComponent(`status:any id:${missing.slice(i, i + SEARCH_SIZE).join(",")}`)}`);
         for (const p of posts) {
-            found.set(p.id, { parent: String(p.relationships.parent_id ?? ""), rating: p.rating, tags: new Set(Object.values(p.tags).flat()) });
+            found.set(p.id, { parent: String(p.relationships.parent_id ?? ""), rating: p.rating, tags: new Set(p.tags) });
         }
     }
     return found;

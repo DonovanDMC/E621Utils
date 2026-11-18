@@ -156,7 +156,7 @@ async function onInteraction(interaction: AnyInteractionGateway) {
             }
 
             const embeds: Array<EmbedOptions> = [];
-            const posts = await RequestQueue.add(() => e621.posts.search({ tags: `id:${[...tracked.keys()].join(",")}`, v2: true, mode: "extended" }));
+            const posts = await RequestQueue.add(() => e621.posts.search({ tags: `id:${[...tracked.keys()].join(",")}`, mode: "extended" }));
             for (const entry of tracked.values()) {
                 embeds.push(makeEmbed(entry, posts.find(p => p.id === entry.post) ?? null, null));
             }
@@ -414,7 +414,7 @@ export function needsTagCheck(post: CheckPost) {
 
 /** checks the post as it is right now, the stream's copy (or a set change) is only what says it might have changed */
 export async function recheckPost(id: number) {
-    const post = await RequestQueue.add(() => e621.posts.get(id, { v2: true, mode: "extended" }));
+    const post = await RequestQueue.add(() => e621.posts.get(id, { mode: "extended" }));
     if (await apply(id, evaluate(post), post) !== null) {
         scheduleStatus(true);
     }
@@ -515,7 +515,7 @@ export default async function runChecks() {
         const allPosts: Array<ExtendedPost> = [];
         for (const { base, groups } of configs) {
             const tags = `${groups === null ? "" : groups.map(tag => `~${tag} `).join("")}${base}`;
-            const posts = await RequestQueue.add(() => e621.posts.search({ tags, limit: 320, v2: true, mode: "extended" }));
+            const posts = await RequestQueue.add(() => e621.posts.search({ tags, limit: 320, mode: "extended" }));
             allPosts.push(...posts);
             for (const post of posts) {
                 const all = new Set(Object.values(post.tags).flat());
@@ -526,7 +526,7 @@ export default async function runChecks() {
 
         const missing = [...tracked.keys()].filter(id => !found.has(id));
         if (missing.length !== 0) {
-            allPosts.push(...await RequestQueue.add(() => e621.posts.search({ tags: `id:${missing.join(",")}`, limit: 320, v2: true, mode: "extended" })));
+            allPosts.push(...await RequestQueue.add(() => e621.posts.search({ tags: `id:${missing.join(",")}`, limit: 320, mode: "extended" })));
         }
 
         let added = 0, removed = 0;
