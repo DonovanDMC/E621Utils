@@ -6,7 +6,7 @@ import type { HandlerPost, PostHandler } from "./handler.js";
 import logger from "./logger.js";
 import { getOwnTopic, handleMention, handleTopic, isMention, isOwn, setAuthUser } from "./mentions.js";
 import ratios from "./ratios.js";
-import { findUndone, handleOwnVersion, handleUndone, revertsEnabled } from "./reverts.js";
+import { findUndone, handleOwnVersion, handleUndone, hasPendingSources, revertsEnabled } from "./reverts.js";
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
@@ -134,7 +134,13 @@ function onTopic(id: string, topic: ForumTopic) {
 
 function onVersion(id: string, version: PostVersion) {
     // ours are only saved, which is safe to repeat if they're replayed
-    if (handleOwnVersion(version) || findUndone(version).length === 0) {
+    const own = handleOwnVersion(version);
+    if (own.mine && own.saveSources) {
+        const { saveSources } = own;
+        enqueue(id, async() => saveSources().catch(err => logger.error(`[stream] Failed to save source edits from version ${version.id}:`, err)));
+        return;
+    }
+    if (own.mine || (findUndone(version).length === 0 && !hasPendingSources(version.post_id))) {
         skip(id);
         return;
     }
