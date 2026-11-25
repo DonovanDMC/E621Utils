@@ -1,6 +1,7 @@
 import { discord } from "./clients.js";
 import logger from "./logger.js";
 import RequestQueue from "./queue.js";
+import { canonicalSource, canonicalSources } from "./source-alternates.js";
 import { DRY_RUN } from "./state.js";
 import { getStream } from "./stream.js";
 import { dataDir, isDirectRun } from "./util.js";
@@ -56,38 +57,42 @@ function setMeta(key: string, value: string | number) {
     getDB().query("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(key, String(value));
 }
 
-const isMine = (v: Pick<Version, "updater_name">) => v.updater_name.toLowerCase() === me;
+// hidden versions only have id, post_id, version, updated_at, and is_hidden unless you're staff
+const isMine = (v: Pick<Version, "updater_name">) => v.updater_name?.toLowerCase() === me;
 
-const sourcesOf = (source: string) => new Set(source.split("\n").map(s => s.trim()).filter(s => s !== ""));
+const sourcesOf = (source: string | undefined) => new Set((source ?? "").split("\n").map(s => s.trim()).filter(s => s !== ""));
 
 /** versions have the whole source list instead of what changed, so source edits need the list from before them */
 const needsPrevious = (v: Version) => v.version !== 1 && v.source_changed;
 
-/** what one of our versions changed, version 1 is the upload so it isn't counted. sources are only counted with `previous` */
+/**
+ * What one of our versions changed, version 1 is the upload so it isn't counted. sources are only counted with `previous`,
+ * and ones e621 rewrote when we saved (twitter.com to x.com, etc.) aren't counted as ours.
+ */
 function editsOf(v: Version, previous?: Set<string>): Array<Edit> {
     if (v.version === 1) {
         return [];
     }
     const base = { post_id: v.post_id, version: v.id };
-    const sources = sourcesOf(v.source);
+    const sources = sourcesOf(v.source), now = canonicalSources(sources), before = canonicalSources(previous ?? []);
     return [
         ...v.added_tags.map(tag => ({ ...base, type: "tag" as const, key: tag, value: "+" })),
         ...v.removed_tags.map(tag => ({ ...base, type: "tag" as const, key: tag, value: "-" })),
         ...(v.rating_changed ? [{ ...base, type: "rating" as const, key: "", value: v.rating }] : []),
         ...(v.parent_changed ? [{ ...base, type: "parent" as const, key: "", value: String(v.parent_id ?? "") }] : []),
         ...(previous && v.source_changed ? [
-            ...[...sources].filter(s => !previous.has(s)).map(s => ({ ...base, type: "source" as const, key: s, value: "+" })),
-            ...[...previous].filter(s => !sources.has(s)).map(s => ({ ...base, type: "source" as const, key: s, value: "-" }))
+            ...[...sources].filter(s => !before.has(canonicalSource(s))).map(s => ({ ...base, type: "source" as const, key: s, value: "+" })),
+            ...[...previous].filter(s => !now.has(canonicalSource(s))).map(s => ({ ...base, type: "source" as const, key: s, value: "-" }))
         ] : [])
     ];
 }
 
 /**
  * The sources each version's post had before it, from the newest version before it that changed them.
- * A post with none of those had no sources before.
+ * A post with none of those had no sources before. If that version is hidden there's no way to know, so it's null.
  */
 async function previousSources(versions: Array<Version>) {
-    const found = new Map<number, Set<string>>();
+    const found = new Map<number, Set<string> | null>();
     const byPost = Map.groupBy(versions.filter(needsPrevious), v => v.post_id);
     const posts = [...byPost.keys()];
     for (let i = 0; i < posts.length; i += 50) {
@@ -101,7 +106,7 @@ async function previousSources(versions: Array<Version>) {
             for (const p of page) {
                 for (const v of waiting) {
                     if (v.post_id === p.post_id && p.id < v.id && !found.has(v.id)) {
-                        found.set(v.id, sourcesOf(p.source));
+                        found.set(v.id, p.source === undefined ? null : sourcesOf(p.source));
                     }
                 }
             }
@@ -142,13 +147,14 @@ export function findUndone(v: Version) {
     if (!revertsEnabled || isMine(v)) {
         return [];
     }
-    const added = new Set(v.added_tags), removed = new Set(v.removed_tags), sources = sourcesOf(v.source);
+    const added = new Set(v.added_tags), removed = new Set(v.removed_tags), sources = canonicalSources(sourcesOf(v.source));
     return getDB().query<Edit>("SELECT * FROM edits WHERE post_id = ? AND version < ?").all(v.post_id, v.id).filter(e => {
         switch (e.type) {
             case "tag": return e.value === "+" ? removed.has(e.key) : added.has(e.key);
             case "rating": return v.rating_changed && v.rating !== e.value;
             case "parent": return v.parent_changed && String(v.parent_id ?? "") !== e.value;
-            case "source": return v.source_changed && sources.has(e.key) !== (e.value === "+");
+            // e621 rewriting one of ours into another form isn't undoing it
+            case "source": return v.source_changed && sources.has(canonicalSource(e.key)) !== (e.value === "+");
         }
     });
 }
@@ -174,8 +180,10 @@ export function handleOwnVersion(v: Version): { mine: false; } | { mine: true; s
         mine:        true,
         saveSources: async() => {
             try {
-                const previous = (await previousSources([v])).get(v.id)!;
-                saveEdits(editsOf(v, previous).filter(e => e.type === "source"), false);
+                const previous = (await previousSources([v])).get(v.id);
+                if (previous) {
+                    saveEdits(editsOf(v, previous).filter(e => e.type === "source"), false);
+                }
             } finally {
                 const left = pendingSources.get(v.post_id)! - 1;
                 if (left === 0) {
@@ -277,10 +285,10 @@ async function crawl() {
     let before = getMeta("crawl.before");
     logger.info(before === null ? "[reverts] Crawling our post versions" : `[reverts] Resuming the crawl before version ${before}`);
     let count = 0, pages = 0;
-    const savePage = getDB().transaction((versions: Array<Version>, previous: Map<number, Set<string>>, last: number) => {
+    const savePage = getDB().transaction((versions: Array<Version>, previous: Map<number, Set<string> | null>, last: number) => {
         for (const v of versions) {
             if (isMine(v)) {
-                saveEdits(editsOf(v, previous.get(v.id) ?? new Set()), true);
+                saveEdits(editsOf(v, previous.get(v.id) ?? undefined), true);
             }
         }
         setMeta("crawl.before", last);
@@ -380,6 +388,7 @@ async function byTagRelation(e: Edit, tags: Set<string>) {
 interface CurrentPost {
     parent: string;
     rating: string;
+    /** from `canonicalSources` */
     sources: Set<string>;
     tags: Set<string>;
 }
@@ -410,7 +419,7 @@ async function getPosts(ids: Array<number>, trust: (id: number, post: CurrentPos
             for (const snap of Object.values(snapshots ?? {})) {
                 // only id is guaranteed, the rest are fetched if any are missing
                 if (snap?.tags && snap.rating && snap.parent_id !== undefined && snap.sources) {
-                    const post = { parent: String(snap.parent_id ?? ""), rating: snap.rating, sources: new Set(snap.sources), tags: new Set(Object.values(snap.tags).flat()) };
+                    const post = { parent: String(snap.parent_id ?? ""), rating: snap.rating, sources: canonicalSources(snap.sources), tags: new Set(Object.values(snap.tags).flat()) };
                     if (trust(snap.id, post)) {
                         found.set(snap.id, post);
                     }
@@ -423,7 +432,7 @@ async function getPosts(ids: Array<number>, trust: (id: number, post: CurrentPos
     for (let i = 0; i < missing.length; i += SEARCH_SIZE) {
         const posts = await get<Array<{ id: number; rating: string; relationships: { parent_id: number | null; }; sources: Array<string>; tags: Array<string>; }>>(`/posts.json?limit=320&tags=${encodeURIComponent(`status:any id:${missing.slice(i, i + SEARCH_SIZE).join(",")}`)}`);
         for (const p of posts) {
-            found.set(p.id, { parent: String(p.relationships.parent_id ?? ""), rating: p.rating, sources: new Set(p.sources), tags: new Set(p.tags) });
+            found.set(p.id, { parent: String(p.relationships.parent_id ?? ""), rating: p.rating, sources: canonicalSources(p.sources), tags: new Set(p.tags) });
         }
     }
     return found;
@@ -434,7 +443,7 @@ function stillInPlace(e: Edit, post: CurrentPost) {
         case "tag": return post.tags.has(e.key) === (e.value === "+");
         case "rating": return post.rating === e.value;
         case "parent": return post.parent === e.value;
-        case "source": return post.sources.has(e.key) === (e.value === "+");
+        case "source": return post.sources.has(canonicalSource(e.key)) === (e.value === "+");
     }
 }
 
@@ -508,7 +517,7 @@ async function verify() {
 
 /** the first run crawls everything, after that it's all from the stream. resumes where it left off after a restart */
 // bump to redo the crawl and check, what's already tracked is kept and anything the check dropped is crawled again
-const BASELINE = 3;
+const BASELINE = 4;
 
 export async function runRevertsBackfill() {
     if (!revertsEnabled) {
@@ -516,6 +525,10 @@ export async function runRevertsBackfill() {
     }
     if (getMeta("baseline") !== String(BASELINE)) {
         getDB().run("DELETE FROM meta WHERE key IN ('crawl.before', 'crawl.done', 'verify.after', 'verify.done')");
+        // before 4, sources e621 rewrote were saved as our edits, they're all crawled again
+        if (Number(getMeta("baseline") ?? 0) < 4) {
+            getDB().run("DELETE FROM edits WHERE type = 'source'");
+        }
         rmSync(existingFile, { force: true });
         setMeta("baseline", BASELINE);
     }
