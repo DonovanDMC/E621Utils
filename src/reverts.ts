@@ -417,12 +417,13 @@ async function getPosts(ids: Array<number>, trust: (id: number, post: CurrentPos
             // anything that fails is fetched from e621 below
             const snapshots = await stream.snapshots("post", ids.slice(i, i + SNAPSHOT_SIZE)).catch(() => null);
             for (const snap of Object.values(snapshots ?? {})) {
-                // only id is guaranteed, the rest are fetched if any are missing
-                if (snap?.tags && snap.rating && snap.parent_id !== undefined && snap.sources) {
-                    const post = { parent: String(snap.parent_id ?? ""), rating: snap.rating, sources: canonicalSources(snap.sources), tags: new Set(Object.values(snap.tags).flat()) };
-                    if (trust(snap.id, post)) {
-                        found.set(snap.id, post);
-                    }
+                if (snap === null) {
+                    continue;
+                }
+                const { data } = snap;
+                const post = { parent: String(data.relationships.parent_id ?? ""), rating: data.rating, sources: canonicalSources(data.sources), tags: new Set(Object.values(data.tags).flat()) };
+                if (trust(snap.id, post)) {
+                    found.set(snap.id, post);
                 }
             }
         }

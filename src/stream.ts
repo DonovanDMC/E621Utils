@@ -10,7 +10,7 @@ import { findUndone, handleOwnVersion, handleUndone, hasPendingSources, revertsE
 import { DRY_RUN, loadState, saveState, state } from "./state.js";
 import { isDirectRun } from "./util.js";
 import config from "../config.json" with { type: "json" };
-import { E621Stream, type ForumPost, type ForumTopic, type LegacyPost, type PostVersion, type Recovery } from "e621stream";
+import { E621Stream, type ExtendedPost, type ForumPost, type ForumTopic, type PostVersion, type Recovery } from "e621stream";
 
 const handlers: Array<PostHandler> = [discordCDNParams, ratios, cleanup];
 
@@ -76,7 +76,7 @@ export async function runQueued(run: () => Promise<void>) {
     return new Promise<void>((resolve, reject) => enqueue(null, async() => run().then(resolve, reject)));
 }
 
-function onPost(id: string, post: LegacyPost) {
+function onPost(id: string, post: ExtendedPost) {
     const matched = matchHandlers(post);
     const tagCheck = needsTagCheck(post);
     if (matched.length === 0 && !tagCheck) {
@@ -156,9 +156,9 @@ function onSet(id: string, setId: number) {
 function logRecovery(r: Recovery) {
     const window = `${r.from} to ${r.to} (${r.sources.join(", ")})`;
     if (!r.done) {
-        logger.info(`[stream] Recovery ${r.id} started, going back over ${window}`);
+        logger.info(`[stream] Recovery started, going back over ${window}`);
     } else {
-        (r.status === "done" || r.status === undefined ? logger.info : logger.warn)(`[stream] Recovery ${r.id} ${r.status ?? "done"}, ${r.events ?? 0} events from ${window}`);
+        (r.status === "done" || r.status === undefined ? logger.info : logger.warn)(`[stream] Recovery ${r.status ?? "done"}, ${r.events ?? 0} events from ${window}`);
     }
 }
 
@@ -201,19 +201,19 @@ export async function startStream() {
     stream.on("reconnecting", ({ attempt, delayMS }) => logger.info(`[stream] Reconnecting in ${delayMS}ms (attempt ${attempt})`));
     stream.on("close", ({ code, reason, reconnecting }) => logger.info(`[stream] Closed (${code}: ${reason})${reconnecting ? "" : ", not reconnecting"}`));
     stream.on("error", err => logger.error("[stream] Error:", err));
-    stream.on("post.create", event => onPost(event.id, event.data.post));
-    stream.on("post.update", event => onPost(event.id, event.data.post));
+    stream.on("post.create", event => onPost(event.id, event.data));
+    stream.on("post.update", event => onPost(event.id, event.data));
     stream.on("blip.create", event => onMention(event.id, "blip", event.data, event.recovered === true));
     stream.on("comment.create", event => onMention(event.id, "comment", event.data, event.recovered === true));
     stream.on("forum_post.create", event => onForumPost(event.id, event.data, event.recovered === true));
     stream.on("forum_topic.create", event => onTopic(event.id, event.data));
     stream.on("post_version.create", event => onVersion(event.id, event.data));
-    stream.on("post_set.add_posts", event => onSet(event.id, event.data.post_set.id));
-    stream.on("post_set.remove_posts", event => onSet(event.id, event.data.post_set.id));
+    stream.on("post_set.add_posts", event => onSet(event.id, event.data.id));
+    stream.on("post_set.remove_posts", event => onSet(event.id, event.data.id));
     // private, so they aren't part of the cursor and skip the cursor queue
     const onPrivateSet = (setId: number) => void runQueued(async() => onSetChanged(setId)).catch(err => logger.error(`[stream] Failed to update set ${setId}:`, err));
-    stream.on("private_post_set.add_posts", event => onPrivateSet(event.data.post_set.id));
-    stream.on("private_post_set.remove_posts", event => onPrivateSet(event.data.post_set.id));
+    stream.on("private_post_set.add_posts", event => onPrivateSet(event.data.id));
+    stream.on("private_post_set.remove_posts", event => onPrivateSet(event.data.id));
     // private events aren't part of the cursor, the stream keeps track of which dmails it's sent itself
     stream.on("dmail.create", event => void handleDMail(event.data).catch(err => logger.error(`[stream] Failed to send dmail ${event.data.id}:`, err)));
 

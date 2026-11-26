@@ -496,7 +496,7 @@ const privateSetEvents = !DRY_RUN;
 export function setSubscriptions() {
     const publicIds = [...setInfo.values()].filter(s => s.isPublic).map(s => s.id);
     return [
-        ...(publicIds.length === 0 ? [] : ["post_set.add_posts", "post_set.remove_posts"].map(type => ({ type, filter: { set_ids: publicIds } }))),
+        ...(publicIds.length === 0 ? [] : ["post_set.add_posts", "post_set.remove_posts"].map(type => ({ type, filter: { ids: publicIds } }))),
         // these can't be filtered, onSetChanged ignores sets that aren't used. like dmails, only one connection per account should get them
         ...(privateSetEvents ? ["private_post_set.add_posts", "private_post_set.remove_posts"] : [])
     ];

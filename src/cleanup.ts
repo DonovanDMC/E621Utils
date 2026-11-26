@@ -38,7 +38,7 @@ interface Conditional {
 const conditional: Record<string, Conditional> = {
     no_sound: {
         reason: "[cleanup] file cannot have sound",
-        when:   post => ["png", "gif", "webp"].includes(post.file.ext)
+        when:   post => ["png", "gif", "webp"].includes(post.files.meta.ext)
     }
 };
 

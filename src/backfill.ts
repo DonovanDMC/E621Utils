@@ -13,7 +13,7 @@ const client = new E621ExportDownloader({ cache: false });
 function toPost(record: PostData): HandlerPost {
     return {
         id:      record.id,
-        file:    { ext: record.file_ext },
+        files:   { meta: { ext: record.file_ext } },
         sources: record.sources,
         tags:    { artist: [], character: [], contributor: [], copyright: [], general: record.tags, invalid: [], lore: [], meta: [], species: [] }
     };

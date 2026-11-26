@@ -107,7 +107,7 @@ export async function getOwnTopic(id: number) {
         return null;
     }
     const snapshot = await getStream()?.snapshots("forum_topic", [id]).catch(() => null);
-    return { id, title: snapshot?.[id]?.title ?? title };
+    return { id, title: snapshot?.[id]?.data.title ?? title };
 }
 
 export async function getAvatar(userID: number) {

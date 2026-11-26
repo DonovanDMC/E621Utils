@@ -2,10 +2,10 @@ import { e621 } from "./clients.js";
 import logger from "./logger.js";
 import RequestQueue from "./queue.js";
 import { DRY_RUN, markSourcesEdited, wasSourceEdited } from "./state.js";
-import type { LegacyPost } from "e621stream";
+import type { ExtendedPost } from "e621stream";
 
 /** what handlers get to look at, it's all export rows have too */
-export type HandlerPost = Pick<LegacyPost, "id" | "sources" | "tags"> & { file: Pick<LegacyPost["file"], "ext">; };
+export type HandlerPost = Pick<ExtendedPost, "id" | "sources" | "tags"> & { files: { meta: Pick<ExtendedPost["files"]["meta"], "ext">; }; };
 
 export interface PostHandler {
     /**
@@ -17,7 +17,7 @@ export interface PostHandler {
     run(post: HandlerPost): Promise<void>;
 }
 
-export function allTags(post: Pick<LegacyPost, "tags">): Array<string> {
+export function allTags(post: Pick<ExtendedPost, "tags">): Array<string> {
     return Object.values(post.tags).flat();
 }
 
